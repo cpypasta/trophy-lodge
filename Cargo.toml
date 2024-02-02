@@ -1,5 +1,5 @@
 [package]
-name = "trophy-lodge"
+name = "trophy_lodge"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,3 +14,7 @@ eframe = { version = "0.25.0", default-features = false, features = [
     "persistence",   # Enable restoring app state when restarting the app.
     "__screenshot",
 ] }
+convert_case = "0.6.0"
+strum = "0.26.1"
+strum_macros = "0.26.1"
+rand = "0.8.5"
