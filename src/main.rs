@@ -10,7 +10,7 @@ use std::fmt;
 use strum::{IntoEnumIterator, VariantArray};
 use models::*;
 use data::*;
-use egui_extras::{Column, TableBuilder};
+use egui_extras::{Column, TableBuilder, StripBuilder, Size};
 
 const ICON: &[u8] = include_bytes!("../static/icon.png");
 const SMALL_FONT: f32 = 14.0;
@@ -67,10 +67,8 @@ where I: Iterator<Item = T>,
 }
 
 fn summary_metric(ui: &mut Ui, label: &str, value: String) {
-    ui.horizontal(|ui| {
-        ui.small(RichText::new(format!("{}", value)));    
-        ui.small(RichText::new(format!("{}:", label)).strong());
-    });
+    ui.small(RichText::new(format!("{}:", label)).strong());
+    ui.small(RichText::new(format!("{}", value)));    
 }
 
 fn col_label(ui: &mut Ui, value: String) {
@@ -89,6 +87,7 @@ fn default_cols() -> Vec<String> {
         TrophyCols::Score,
         TrophyCols::Weight,
         TrophyCols::ShotDistance,
+        TrophyCols::ShotDamage,
     ];
     cols.iter().map(|x| x.to_string()).collect()
 }
@@ -96,8 +95,8 @@ fn default_cols() -> Vec<String> {
 #[derive(PartialEq)]
 enum Sidebar {
     Trophies,
-    Challenges,
-    Friends,
+    // Challenges,
+    // Friends,
     Settings,
 }
 
@@ -149,29 +148,48 @@ impl eframe::App for MyApp {
         TopBottomPanel::top("top_panel")
             .resizable(false)
             .show(ctx, |ui| { 
-                ui.horizontal_wrapped(|ui| {
-                    ui.vertical(|ui| {
-                        ui.add_space(10.0);
-                        ui.add(Image::new(include_image!("../static/logo2.png"))
-                                .fit_to_original_size(0.8)
-                        );
-                        ui.add_space(10.0);
+                StripBuilder::new(ui)
+                .size(Size::exact(90.0))
+                .size(Size::exact(450.0))
+                .size(Size::remainder())
+                .size(Size::exact(140.0))
+                .horizontal(|mut strip| {
+                    strip.cell(|ui| {
+                        ui.vertical(|ui| {
+                            ui.add_space(10.0);
+                            ui.add(Image::new(include_image!("../static/logo2.png"))
+                                    .fit_to_original_size(0.8)
+                            );
+                            ui.add_space(10.0);
+                        });
                     });
-                    ui.add_space(15.0);
-                    ui.horizontal_centered(|ui| {
-                        ui.heading(RichText::new("Trophy Lodge"));
-                        ui.small(RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))));
+                    strip.cell(|ui| {
+                        ui.horizontal_centered(|ui| {
+                            ui.heading(RichText::new("Trophy Lodge"));
+                            ui.small(RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))));
+                        });
                     });
-                    ui.with_layout(                        
-                        Layout::default().with_cross_align(Align::RIGHT),
-                        |ui| {
+                    strip.cell(|ui| { ui.small(""); });
+                    strip.cell(|ui| {
+                        ui.with_layout(Layout::default().with_cross_align(Align::RIGHT), |ui| {
                             ui.small(RichText::new("mvision69").color(Color32::DEBUG_COLOR));
-                            ui.add_space(5.0);
-                            summary_metric(ui, "Trophies", 2000.to_string());
-                            summary_metric(ui, "Diamonds", 1000.to_string());
-                            summary_metric(ui, "Great Ones", 1.to_string());
-                        }
-                    );
+                        });
+                        ui.add_space(10.0);
+                        ui.group(|ui| {
+                            Grid::new("summary_metrics")
+                            .num_columns(2)
+                            .striped(false)
+                            .spacing([5.0, 5.0])
+                            .show(ui, |ui| {
+                                summary_metric(ui, "Trophies", 300.to_string());
+                                ui.end_row();
+                                summary_metric(ui, "Diamonds", 10.to_string());
+                                ui.end_row();
+                                summary_metric(ui, "Great Ones", 1.to_string());
+                                ui.end_row();
+                            });
+                        });
+                    });               
                 });
             });
 
@@ -182,10 +200,10 @@ impl eframe::App for MyApp {
                 ui.vertical(|ui| {
                     ui.add_space(10.0);
                     ui.selectable_value(&mut self.menu, Sidebar::Trophies, "Trophies");
-                    ui.add_space(5.0);
-                    ui.selectable_value(&mut self.menu, Sidebar::Challenges, "Challenges");
-                    ui.add_space(5.0);
-                    ui.selectable_value(&mut self.menu, Sidebar::Friends, "Friends");
+                    // ui.add_space(5.0);
+                    // ui.selectable_value(&mut self.menu, Sidebar::Challenges, "Challenges");
+                    // ui.add_space(5.0);
+                    // ui.selectable_value(&mut self.menu, Sidebar::Friends, "Friends");
                     ui.add_space(5.0);
                     ui.selectable_value(&mut self.menu, Sidebar::Settings, "Settings");
                 });
@@ -282,6 +300,8 @@ impl eframe::App for MyApp {
                         .striped(true)
                         .resizable(true)                        
                         .sense(Sense::click())
+                        .max_scroll_height(1000.0)
+                        .auto_shrink(false)
                         .columns(Column::auto(), self.selected_cols.len());
                     trophies
                         .header(30.0, |mut header| {
@@ -379,12 +399,6 @@ impl eframe::App for MyApp {
                                 });
                             }
                         });
-                }
-                Sidebar::Challenges => {
-                    ui.label(RichText::new("Challenges"));
-                }
-                Sidebar::Friends => {
-                    ui.label(RichText::new("Friends"));
                 }
                 Sidebar::Settings => {
                     ui.label(RichText::new("Settings"));
