@@ -12,9 +12,10 @@ eframe = { version = "0.25.0", default-features = false, features = [
     "default_fonts", # Embed the default egui fonts.
     "glow",          # Use the glow rendering backend. Alternative: "wgpu".
     "persistence",   # Enable restoring app state when restarting the app.
-    "__screenshot",
 ] }
 convert_case = "0.6.0"
 strum = "0.26.1"
 strum_macros = "0.26.1"
 rand = "0.8.5"
+egui-modal = "0.3.2"
+serde_json = "1.0.113"
