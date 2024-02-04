@@ -147,6 +147,8 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {        
         TopBottomPanel::top("top_panel")
             .resizable(false)
+            .min_height(120.0)
+            .max_height(120.0)
             .show(ctx, |ui| { 
                 StripBuilder::new(ui)
                 .size(Size::exact(90.0))
@@ -181,11 +183,11 @@ impl eframe::App for MyApp {
                             .striped(false)
                             .spacing([5.0, 5.0])
                             .show(ui, |ui| {
-                                summary_metric(ui, "Trophies", 300.to_string());
+                                summary_metric(ui, "Trophies", self.data.len().to_string());
                                 ui.end_row();
-                                summary_metric(ui, "Diamonds", 10.to_string());
+                                summary_metric(ui, "Diamonds", self.data.iter().filter(|x| x.rating == Ratings::Diamond).count().to_string());
                                 ui.end_row();
-                                summary_metric(ui, "Great Ones", 1.to_string());
+                                summary_metric(ui, "Great Ones", self.data.iter().filter(|x| x.rating == Ratings::GreatOne).count().to_string());
                                 ui.end_row();
                             });
                         });
@@ -318,86 +320,85 @@ impl eframe::App for MyApp {
                                 });
                             }
                         })
-                        .body(|mut body| {
-                            for trophy in self.filtered_data.iter() {
-                                body.row(30.0, |mut row| {
-                                    if self.selected_cols.contains(&"Species".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.species.to_string());
-                                        });
-                                    }
-                                    if self.selected_cols.contains(&"Reserve".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.reserve.to_string());
-                                        });
-                                    }
-                                    if self.selected_cols.contains(&"Rating".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.rating.to_string());
-                                        });
-                                    }
-                                    if self.selected_cols.contains(&"Score".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.score.to_string());
-                                        });
-                                    }
-                                    if self.selected_cols.contains(&"Weight".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.weight.to_string());
-                                        });        
-                                    }    
-                                    if self.selected_cols.contains(&"Fur".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.fur.to_string());
-                                        });        
-                                    }                 
-                                    if self.selected_cols.contains(&"Gender".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.gender.to_string());
-                                        });        
-                                    }                                                             
-                                    if self.selected_cols.contains(&"Date".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.date.to_string());
-                                        });        
-                                    }
-                                    if self.selected_cols.contains(&"Cash".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.cash.to_string());
-                                        });        
-                                    }         
-                                    if self.selected_cols.contains(&"Xp".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.xp.to_string());
-                                        });        
-                                    }   
-                                    if self.selected_cols.contains(&"Session Score".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.session_score.to_string());
-                                        });        
-                                    }                                         
-                                    if self.selected_cols.contains(&"Integrity".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.integrity.to_string());
-                                        });        
-                                    }  
-                                    if self.selected_cols.contains(&"Weapon Score".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.weapon_score.to_string());
-                                        });        
-                                    }                                                
-                                    if self.selected_cols.contains(&"Shot Distance".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.shot_distance.to_string());
-                                        });        
-                                    }                                        
-                                    if self.selected_cols.contains(&"Shot Damage".to_string()) {
-                                        row.col(|ui| { 
-                                            col_label(ui, trophy.shot_damage.to_string());
-                                        });        
-                                    } 
-                                });
-                            }
+                        .body(|body| {
+                            body.rows(30.0, self.filtered_data.len(), |mut row| {
+                                let trophy = self.filtered_data.get(row.index()).unwrap();
+                                if self.selected_cols.contains(&"Species".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.species.to_string());
+                                    });
+                                }
+                                if self.selected_cols.contains(&"Reserve".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.reserve.to_string());
+                                    });
+                                }
+                                if self.selected_cols.contains(&"Rating".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.rating.to_string());
+                                    });
+                                }
+                                if self.selected_cols.contains(&"Score".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.score.to_string());
+                                    });
+                                }
+                                if self.selected_cols.contains(&"Weight".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.weight.to_string());
+                                    });        
+                                }    
+                                if self.selected_cols.contains(&"Fur".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.fur.to_string());
+                                    });        
+                                }                 
+                                if self.selected_cols.contains(&"Gender".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.gender.to_string());
+                                    });        
+                                }                                                             
+                                if self.selected_cols.contains(&"Date".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.date.to_string());
+                                    });        
+                                }
+                                if self.selected_cols.contains(&"Cash".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.cash.to_string());
+                                    });        
+                                }         
+                                if self.selected_cols.contains(&"Xp".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.xp.to_string());
+                                    });        
+                                }   
+                                if self.selected_cols.contains(&"Session Score".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.session_score.to_string());
+                                    });        
+                                }                                         
+                                if self.selected_cols.contains(&"Integrity".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.integrity.to_string());
+                                    });        
+                                }  
+                                if self.selected_cols.contains(&"Weapon Score".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.weapon_score.to_string());
+                                    });        
+                                }                                                
+                                if self.selected_cols.contains(&"Shot Distance".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.shot_distance.to_string());
+                                    });        
+                                }                                        
+                                if self.selected_cols.contains(&"Shot Damage".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.shot_damage.to_string());
+                                    });        
+                                } 
+                            });
                         });
                 }
                 Sidebar::Settings => {
