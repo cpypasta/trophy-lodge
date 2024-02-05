@@ -1,6 +1,7 @@
 use strum::VariantArray;
-use strum_macros::{EnumIter, VariantArray};
+use strum_macros::{EnumIter, VariantArray, EnumString};
 use std::fmt;
+use std::str::FromStr;
 use std::cmp::{Ord, Ordering};
 use convert_case::{Case, Casing};
 use rand::prelude::*;
@@ -24,7 +25,8 @@ fn random_f32() -> f32 {
     rounded
 }
 
-#[derive(PartialEq, Debug, Clone, Copy, EnumIter, VariantArray)]
+#[derive(PartialEq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString)]
+#[strum(serialize_all = "title_case")]
 pub enum Species {
     All,
     RedDeer,
@@ -32,8 +34,10 @@ pub enum Species {
     FallowDeer,
     WildBoar,
     EuropeanBison,
+    PlainsBison,
     Moose,
     Reindeer,
+    MuleDeer,
 }
 impl fmt::Display for Species {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -42,7 +46,8 @@ impl fmt::Display for Species {
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Copy, EnumIter, VariantArray)]
+#[derive(PartialEq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString)]
+#[strum(serialize_all = "title_case")]
 pub enum Reserves {
     All,
     Hirschfelden,
@@ -51,9 +56,13 @@ pub enum Reserves {
     VurhongaSavannah,
     ParqueFernando,
     YukonValley,
-    SilverRidgePeaks,
     CuatroColinas,
+    SilverRidgePeaks,
     TeAwaroa,   
+    RanchoDelArroyo,
+    MississippiAcresPreserve,
+    RevontuliCoast,
+    NewEnglandMountains,
 }
 impl fmt::Display for Reserves {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -62,7 +71,8 @@ impl fmt::Display for Reserves {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone, Copy, EnumIter, VariantArray)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString)]
+#[strum(serialize_all = "title_case")]
 pub enum Ratings {
     All,
     GreatOne,
@@ -117,7 +127,7 @@ impl fmt::Display for SortBy {
     }
 }
 
-#[derive(Debug, VariantArray, Clone, Copy)]
+#[derive(Debug, VariantArray, Clone, Copy, EnumString)]
 pub enum Gender {
     Male,
     Female,
@@ -129,26 +139,28 @@ impl fmt::Display for Gender {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Trophy<'a> {
+#[derive(Debug, Clone)]
+pub struct Trophy {
     pub species: Species,
     pub reserve: Reserves,
     pub rating: Ratings,
     pub score: f32,
     pub weight: f32,
-    pub fur: &'a str,
-    pub date: &'a str,
+    pub fur: String,
+    pub date: String,
     pub gender: Gender,
     pub cash: i32,
     pub xp: i32,
     pub session_score: i32,
     pub integrity: bool,
+    pub tracking: f32,
     pub weapon_score: f32,
     pub shot_distance: f32,
     pub shot_damage: f32,
+    pub mods: bool,
 }
 
-impl Default for Trophy<'_> {
+impl Default for Trophy {
     fn default() -> Self {
         Trophy {
             species: random_enum(Species::VARIANTS.iter()).to_owned(),
@@ -156,16 +168,18 @@ impl Default for Trophy<'_> {
             rating: random_enum(Ratings::VARIANTS.iter()).to_owned(),
             score: random_f32(),
             weight: random_f32(),
-            date: "2021-01-01 12:00:00",
-            fur: "Dark",
+            date: "2021-01-01 12:00:00".to_string(),
+            fur: "Dark".to_string(),
             gender: random_enum(Gender::VARIANTS.iter()).to_owned(),
             cash: 100,
             xp: 200,
             session_score: 300,
             integrity: true,
+            tracking: random_f32(),
             weapon_score: random_f32(),
             shot_distance: random_f32(),
             shot_damage: random_f32(),
+            mods: false,
         }
     }
 }
@@ -201,9 +215,11 @@ pub enum TrophyCols {
     XP,
     SessionScore,
     Integrity,
+    Tracking,
     WeaponScore,
     ShotDistance,
     ShotDamage,
+    Mods,
 }
 impl fmt::Display for TrophyCols {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -211,7 +227,7 @@ impl fmt::Display for TrophyCols {
         write!(f, "{}", model)
     }
 }
-impl std::str::FromStr for TrophyCols {
+impl FromStr for TrophyCols {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -227,9 +243,11 @@ impl std::str::FromStr for TrophyCols {
             "Xp" => Ok(TrophyCols::XP),
             "Session Score" => Ok(TrophyCols::SessionScore),
             "Integrity" => Ok(TrophyCols::Integrity),
+            "Tracking" => Ok(TrophyCols::Tracking),
             "Weapon Score" => Ok(TrophyCols::WeaponScore),
             "Shot Distance" => Ok(TrophyCols::ShotDistance),
             "Shot Damage" => Ok(TrophyCols::ShotDamage),
+            "Mods" => Ok(TrophyCols::Mods),
             _ => Err(()),
         }
     }
@@ -248,9 +266,11 @@ fn trophy_col_order(col: &TrophyCols) -> i32 {
         TrophyCols::XP => 9,
         TrophyCols::SessionScore => 10,
         TrophyCols::Integrity => 11,
-        TrophyCols::WeaponScore => 12,
-        TrophyCols::ShotDistance => 13,
-        TrophyCols::ShotDamage => 14,
+        TrophyCols::Tracking => 12,
+        TrophyCols::WeaponScore => 13,
+        TrophyCols::ShotDistance => 14,
+        TrophyCols::ShotDamage => 15,
+        TrophyCols::Mods => 16,
     }
 }
 impl Ord for TrophyCols {

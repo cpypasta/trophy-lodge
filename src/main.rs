@@ -2,6 +2,7 @@
 
 mod models;
 mod data;
+mod game_monitor;
 
 use egui::*;
 use std::str::FromStr;
@@ -9,8 +10,10 @@ use eframe::Storage;
 use std::fmt;
 use strum::{IntoEnumIterator, VariantArray};
 use models::*;
-use data::*;
 use egui_extras::{Column, TableBuilder, StripBuilder, Size};
+use std::sync::mpsc;
+use std::sync::mpsc::Receiver;
+use std::thread;
 
 const ICON: &[u8] = include_bytes!("../static/icon.png");
 const SMALL_FONT: f32 = 14.0;
@@ -19,15 +22,21 @@ const MEDIUM_FONT: f32 = 16.0;
 fn main() -> Result<(), eframe::Error> {
     let icon_data = eframe::icon_data::from_png_bytes(ICON).expect("Failed to load icon");
     let options = eframe::NativeOptions {
-        viewport: ViewportBuilder::default().with_inner_size([1000.0, 850.0]).with_icon(icon_data),
+        viewport: ViewportBuilder::default().with_inner_size([1010.0, 850.0]).with_icon(icon_data),
         ..Default::default()
     };
     eframe::run_native(
-        "Trophy Lodge",
+        "Trophy Lodge ",
         options,
         Box::new(|cc| {
+            let (status_tx, status_rx) = mpsc::channel::<String>();
+            let (trophy_tx, trophy_rx) = mpsc::channel::<Trophy>();
+            thread::spawn(move || {
+                game_monitor::monitor(status_tx, trophy_tx);
+            });
+
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Box::new(MyApp::new(cc))
+            Box::new(MyApp::new(cc, status_rx, trophy_rx))
         }),
     )
 }
@@ -64,6 +73,26 @@ where I: Iterator<Item = T>,
             ui.set_min_width(200.0);
             combo_options(ui, value, values, capture);
         });
+}
+
+fn filter_data(trophy_filter: &TrophyFilter, mut data: Vec<Trophy>) -> Vec<Trophy> {
+    if trophy_filter.species != Species::All {
+        data.retain(|x| x.species == trophy_filter.species);
+    }
+    if trophy_filter.reserve != Reserves::All {
+        data.retain(|x| x.reserve == trophy_filter.reserve);
+    }
+    if trophy_filter.rating != Ratings::All {
+        data.retain(|x| x.rating == trophy_filter.rating);
+    }
+    match trophy_filter.sort_by {
+        SortBy::Date => data.sort_by(|a, b| b.date.cmp(&a.date)),
+        SortBy::Score => data.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap()),
+        SortBy::Weight => data.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap()),
+        SortBy::Rating => data.sort_by(|a, b| b.rating.cmp(&a.rating)),
+        SortBy::ShotDistance => data.sort_by(|a, b| b.shot_distance.partial_cmp(&a.shot_distance).unwrap()),
+    }    
+    data
 }
 
 fn summary_metric(ui: &mut Ui, label: &str, value: String) {
@@ -106,16 +135,19 @@ struct MyApp {
     reserves: Reserves,
     ratings: Ratings,
     sort_by: SortBy,
-    data: Vec<Trophy<'static>>,
-    filtered_data: Vec<Trophy<'static>>,
+    data: Vec<Trophy>,
+    filtered_data: Vec<Trophy>,
     trophy_filter: TrophyFilter,
     trophy_cols: Vec<String>,
     selected_cols: Vec<String>,
+    status_rx: Receiver<String>,
+    status_msg: String,
+    trophy_rx: Receiver<Trophy>,
 }
 impl MyApp {
-    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>, status_rx: Receiver<String>, trophy_rx: Receiver<Trophy>) -> Self {
         let ctx = &cc.egui_ctx;
-        let test_data = create_trophies(30);
+        let test_data: Vec<Trophy> = vec![];
         let filtered_data = test_data.clone();
         let trophy_filter = TrophyFilter::default();
         set_style(ctx);
@@ -140,6 +172,9 @@ impl MyApp {
             trophy_filter,
             trophy_cols: available_cols(),
             selected_cols,
+            status_rx,
+            status_msg: "".to_string(),
+            trophy_rx,
         }
     }
 }
@@ -212,7 +247,7 @@ impl eframe::App for MyApp {
             });
 
         CentralPanel::default().show(ctx, |ui| {                
-            match self.menu {
+            match self.menu {                
                 Sidebar::Trophies => {
                     ui.collapsing("Configure", |ui| {
                         ui.add_space(20.0);
@@ -225,41 +260,14 @@ impl eframe::App for MyApp {
                             .show(ui, |ui| {
                                 create_combo(ui, "Species", &mut self.species, Species::iter(), |x| { 
                                     self.trophy_filter.species = x;
+                                    self.filtered_data = filter_data(&self.trophy_filter, self.data.clone());                                                                        
                                 });
                                 create_combo(ui, "Rating", &mut self.ratings, Ratings::iter(), |x| {
                                     self.trophy_filter.rating = x;
+                                    self.filtered_data = filter_data(&self.trophy_filter, self.data.clone());
                                 });
                                 ui.vertical(|ui| {
                                     ui.add_space(5.0);
-                                    if ui.button("Apply").clicked() {
-                                        self.filtered_data = self.data.clone();
-                                        if self.trophy_filter.species != Species::All {
-                                            self.filtered_data.retain(|&x| x.species == self.trophy_filter.species);
-                                        }
-                                        if self.trophy_filter.reserve != Reserves::All {
-                                            self.filtered_data.retain(|&x| x.reserve == self.trophy_filter.reserve);
-                                        }
-                                        if self.trophy_filter.rating != Ratings::All {
-                                            self.filtered_data.retain(|&x| x.rating == self.trophy_filter.rating);
-                                        }
-                                        match self.trophy_filter.sort_by {
-                                            SortBy::Date => self.filtered_data.sort_by(|&a, &b| b.date.cmp(&a.date)),
-                                            SortBy::Score => self.filtered_data.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap()),
-                                            SortBy::Weight => self.filtered_data.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap()),
-                                            SortBy::Rating => self.filtered_data.sort_by(|a, b| b.rating.cmp(&a.rating)),
-                                            SortBy::ShotDistance => self.filtered_data.sort_by(|a, b| b.shot_distance.partial_cmp(&a.shot_distance).unwrap()),
-                                        }
-                                    }    
-                                });                            
-                                ui.end_row(); 
-                                create_combo(ui, "Reserve", &mut self.reserves, Reserves::iter(), |x| {
-                                    self.trophy_filter.reserve = x;
-                                });
-                                create_combo(ui, "Sort By", &mut self.sort_by, SortBy::iter(), |x| {
-                                    self.trophy_filter.sort_by = x;
-                                });
-                                ui.vertical(|ui| {
-                                    ui.add_space(5.0);                                
                                     if ui.button("Reset").clicked() {
                                         self.trophy_filter = TrophyFilter::default();
                                         self.species = self.trophy_filter.species;
@@ -267,7 +275,16 @@ impl eframe::App for MyApp {
                                         self.ratings = self.trophy_filter.rating;
                                         self.sort_by = self.trophy_filter.sort_by;
                                         self.filtered_data = self.data.clone();
-                                    }
+                                    }   
+                                });                            
+                                ui.end_row(); 
+                                create_combo(ui, "Reserve", &mut self.reserves, Reserves::iter(), |x| {
+                                    self.trophy_filter.reserve = x;
+                                    self.filtered_data = filter_data(&self.trophy_filter, self.data.clone());
+                                });
+                                create_combo(ui, "Sort By", &mut self.sort_by, SortBy::iter(), |x| {
+                                    self.trophy_filter.sort_by = x;
+                                    self.filtered_data = filter_data(&self.trophy_filter, self.data.clone());
                                 });
                                 ui.end_row();  
                             });
@@ -298,6 +315,11 @@ impl eframe::App for MyApp {
                     });               
 
                     ui.add_space(20.0);
+
+                    if let Ok(trophy) = self.trophy_rx.try_recv() {
+                        self.data.push(trophy);
+                        self.filtered_data = filter_data(&self.trophy_filter, self.data.clone());                        
+                    }
                     let trophies = TableBuilder::new(ui)
                         .striped(true)
                         .resizable(true)                        
@@ -340,12 +362,14 @@ impl eframe::App for MyApp {
                                 }
                                 if self.selected_cols.contains(&"Score".to_string()) {
                                     row.col(|ui| { 
-                                        col_label(ui, trophy.score.to_string());
+                                        let score = format!("{:.2}", trophy.score);
+                                        col_label(ui, score);
                                     });
                                 }
                                 if self.selected_cols.contains(&"Weight".to_string()) {
                                     row.col(|ui| { 
-                                        col_label(ui, trophy.weight.to_string());
+                                        let weight = format!("{:.2}", trophy.weight);
+                                        col_label(ui, weight);
                                     });        
                                 }    
                                 if self.selected_cols.contains(&"Fur".to_string()) {
@@ -382,20 +406,34 @@ impl eframe::App for MyApp {
                                     row.col(|ui| { 
                                         col_label(ui, trophy.integrity.to_string());
                                     });        
+                                }                                           
+                                if self.selected_cols.contains(&"Tracking".to_string()) {
+                                    row.col(|ui| { 
+                                        let tracking = format!("{:.2}", trophy.tracking);
+                                        col_label(ui, tracking);
+                                    });        
                                 }  
                                 if self.selected_cols.contains(&"Weapon Score".to_string()) {
                                     row.col(|ui| { 
-                                        col_label(ui, trophy.weapon_score.to_string());
+                                        let weapon_score = format!("{:.2}", trophy.weapon_score);
+                                        col_label(ui, weapon_score);
                                     });        
                                 }                                                
                                 if self.selected_cols.contains(&"Shot Distance".to_string()) {
                                     row.col(|ui| { 
-                                        col_label(ui, trophy.shot_distance.to_string());
+                                        let shot_distance = format!("{:.2}", trophy.shot_distance);
+                                        col_label(ui, shot_distance);
                                     });        
                                 }                                        
                                 if self.selected_cols.contains(&"Shot Damage".to_string()) {
                                     row.col(|ui| { 
-                                        col_label(ui, trophy.shot_damage.to_string());
+                                        let shot_damage = format!("{:.2}%", trophy.shot_damage);
+                                        col_label(ui, shot_damage);
+                                    });        
+                                }                                         
+                                if self.selected_cols.contains(&"Mods".to_string()) {
+                                    row.col(|ui| { 
+                                        col_label(ui, trophy.mods.to_string());
                                     });        
                                 } 
                             });
@@ -411,10 +449,12 @@ impl eframe::App for MyApp {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.add_space(10.0);
-                ui.label(RichText::new("Attached to game and waiting for harvest...")
-                    .color(Color32::LIGHT_YELLOW)
-                    .size(SMALL_FONT)
-                );
+                if let Ok(status) = self.status_rx.try_recv() {
+                    self.status_msg = status;
+                } else {
+                    ctx.request_repaint();
+                }
+                ui.label(RichText::new(&self.status_msg).color(Color32::LIGHT_YELLOW).size(SMALL_FONT));
                 ui.add_space(10.0);
             });
     }
