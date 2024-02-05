@@ -1,10 +1,10 @@
 use strum::VariantArray;
 use strum_macros::{EnumIter, VariantArray, EnumString};
 use std::fmt;
-use std::str::FromStr;
 use std::cmp::{Ord, Ordering};
 use convert_case::{Case, Casing};
 use rand::prelude::*;
+use serde::{Serialize, Deserialize};
 
 fn fmt_model(value: &impl fmt::Debug) -> String {
     format!("{:?}", value).to_case(Case::Title)
@@ -25,19 +25,102 @@ fn random_f32() -> f32 {
     rounded
 }
 
-#[derive(PartialEq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString)]
+#[derive(PartialEq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString, Serialize, Deserialize)]
 #[strum(serialize_all = "title_case")]
 pub enum Species {
     All,
-    RedDeer,
-    RoeDeer,
-    FallowDeer,
-    WildBoar,
+    AmericanAlligator,
+    AntelopeJackrabbit,
+    AxisDeer,
+    BeciteIbex,
+    BighornSheep,
+    BlackBear,
+    BlackGrouse,
+    Blackbuck,
+    BlacktailDeer,
+    BlueWildebeest,
+    Bobcat,
+    CanadaGoose,
+    CapeBuffalo,
+    Caribou,
+    Chamois,
+    CinnamonTeal,
+    CollaredPeccary,
+    Coyote,
+    EasternCottontailRabbit,
+    EasternWildTurkey,
     EuropeanBison,
-    PlainsBison,
+    EuropeanHare,
+    EuropeanRabbit,
+    EurasianBrownBear,
+    EurasianTeal,
+    EurasianWigeon,
+    FallowDeer,
+    FeralGoat,
+    FeralPig,
+    Gemsbok,
+    Goldeneye,
+    GrayFox,
+    GrayWolf,
+    GredosIbex,
+    GreenWingTeal,
+    GreylagGoose,
+    GrizzlyBear,
+    HarlequinDuck,
+    HazelGrouse,
+    IberianMouflon,
+    IberianWolf,
+    Jackrabbit,
+    LesserKudu,
+    Lion,
+    Mallard,
+    MexicanBobcat,
     Moose,
-    Reindeer,
+    MountainGoat,
+    MountainHare,
+    MountainLion,
     MuleDeer,
+    NorthernBobwhiteQuail,
+    Pheasant,
+    PlainsBison,
+    ProngHorn,
+    Puma,
+    Raccoon,
+    RaccoonDog,
+    RedDeer,
+    RedFox,
+    Reindeer,
+    RioGrandeTurkey,
+    RockPtarmigan,
+    RockmountainElk,
+    RoeDeer,
+    RondaIbex,
+    RooseveltElk,
+    ScrubHare,
+    SiberianMuskDeer,
+    SidestripedJackal,
+    SikaDeer,
+    SoutheasternIbex,
+    Springbok,
+    TuftedDuck,
+    TundraBeanGoose,
+    Warthog,
+    WaterBuffalo,
+    WesternCapercaillie,
+    WhitetailDeer,
+    WildBoar,
+    WildHog,
+    WildTurkey,
+    WillowPtarmigan,
+    HogDeer,
+    MagpieGoose,
+    EasternKangaroo,
+    SambarDeer,
+    Banteng,
+    SaltwaterCrocodile,
+    StubbleQuail,
+    JavanRusa,
+    Unknown,
 }
 impl fmt::Display for Species {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -46,23 +129,25 @@ impl fmt::Display for Species {
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString)]
+#[derive(PartialEq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString, Serialize, Deserialize)]
 #[strum(serialize_all = "title_case")]
 pub enum Reserves {
     All,
     Hirschfelden,
     LaytonLake,
-    MedvedTaiga,
+    MedvedTaigaNationalPark,
     VurhongaSavannah,
     ParqueFernando,
     YukonValley,
-    CuatroColinas,
+    CuatroColinasGameReserve,
     SilverRidgePeaks,
-    TeAwaroa,   
+    TeAwaroaNationalPark,   
     RanchoDelArroyo,
     MississippiAcresPreserve,
     RevontuliCoast,
     NewEnglandMountains,
+    EmeraldCoast,
+    Unknown,
 }
 impl fmt::Display for Reserves {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -71,7 +156,7 @@ impl fmt::Display for Reserves {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString, Deserialize, Serialize)]
 #[strum(serialize_all = "title_case")]
 pub enum Ratings {
     All,
@@ -127,7 +212,7 @@ impl fmt::Display for SortBy {
     }
 }
 
-#[derive(Debug, VariantArray, Clone, Copy, EnumString)]
+#[derive(Debug, VariantArray, Clone, Copy, EnumString, Serialize, Deserialize)]
 pub enum Gender {
     Male,
     Female,
@@ -139,8 +224,9 @@ impl fmt::Display for Gender {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trophy {
+    pub id: f32,
     pub species: Species,
     pub reserve: Reserves,
     pub rating: Ratings,
@@ -163,6 +249,7 @@ pub struct Trophy {
 impl Default for Trophy {
     fn default() -> Self {
         Trophy {
+            id: random_f32(),
             species: random_enum(Species::VARIANTS.iter()).to_owned(),
             reserve: random_enum(Reserves::VARIANTS.iter()).to_owned(),
             rating: random_enum(Ratings::VARIANTS.iter()).to_owned(),
@@ -201,7 +288,8 @@ impl Default for TrophyFilter {
     }
 }
 
-#[derive(PartialOrd, PartialEq, Eq, VariantArray, Debug, EnumIter)]
+#[derive(PartialOrd, PartialEq, Eq, VariantArray, Debug, EnumIter, EnumString)]
+#[strum(serialize_all = "title_case")]
 pub enum TrophyCols {
     Species,
     Reserve,
@@ -225,31 +313,6 @@ impl fmt::Display for TrophyCols {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let model =  fmt_model(&self);
         write!(f, "{}", model)
-    }
-}
-impl FromStr for TrophyCols {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Species" => Ok(TrophyCols::Species),
-            "Reserve" => Ok(TrophyCols::Reserve),
-            "Rating" => Ok(TrophyCols::Rating),
-            "Score" => Ok(TrophyCols::Score),
-            "Weight" => Ok(TrophyCols::Weight),
-            "Fur" => Ok(TrophyCols::Fur),
-            "Gender" => Ok(TrophyCols::Gender),
-            "Date" => Ok(TrophyCols::Date),
-            "Cash" => Ok(TrophyCols::Cash),
-            "Xp" => Ok(TrophyCols::XP),
-            "Session Score" => Ok(TrophyCols::SessionScore),
-            "Integrity" => Ok(TrophyCols::Integrity),
-            "Tracking" => Ok(TrophyCols::Tracking),
-            "Weapon Score" => Ok(TrophyCols::WeaponScore),
-            "Shot Distance" => Ok(TrophyCols::ShotDistance),
-            "Shot Damage" => Ok(TrophyCols::ShotDamage),
-            "Mods" => Ok(TrophyCols::Mods),
-            _ => Err(()),
-        }
     }
 }
 fn trophy_col_order(col: &TrophyCols) -> i32 {
