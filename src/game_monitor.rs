@@ -24,7 +24,7 @@ impl Pointer {
         self.base_address = read_usize(proc, self.base_address, offset);
         self
     }
-    fn value(self) -> usize {
+    fn address(self) -> usize {
         self.base_address
     }
 }
@@ -105,31 +105,47 @@ fn get_game() -> Option<Game> {
     game
 }
 
-fn read_mem<T: Default>(cotw: &Process, address: usize, offset: usize) -> T {
+fn read_mem<T: Default>(cotw: &Process, address: usize, offset: usize) -> Option<T> {
     if let Ok(result) = cotw.read_mem::<T>(address + offset) {
-        result
+        Some(result)
     } else {
-        T::default()
+        None
     }
 }
 
 fn read_int(cotw: &Process, address: usize, offset: usize) -> i32 {
-    read_mem::<i32>(cotw, address, offset)
+    if let Some(x) = read_mem::<i32>(cotw, address, offset) {
+        x
+    } else {
+        -1
+    }
 }
 
 fn read_float(cotw: &Process, address: usize, offset: usize) -> f32 {
-    read_mem::<f32>(cotw, address, offset)
+    if let Some(x) = read_mem::<f32>(cotw, address, offset) {
+        x
+    } else {
+        f32::default()
+    }
 }
 
 fn read_byte(cotw: &Process, address: usize, offset: usize) -> u8 {
-    read_mem::<u8>(cotw, address, offset)
+    if let Some(x) = read_mem::<u8>(cotw, address, offset) {
+        x
+    } else {
+        u8::default()
+    }
 }
 
 fn read_usize(cotw: &Process, address: usize, offset: usize) -> usize {
-    read_mem::<usize>(cotw, address, offset)
+    if let Some(x) = read_mem::<usize>(cotw, address, offset) {
+        x
+    } else {
+        usize::default()
+    }
 }
 
-fn read_string(cotw: &Process, address: usize, offset: usize) -> String {
+fn read_string(cotw: &Process, address: usize, offset: usize, format: bool) -> String {
     let mut result = String::new();
     let mut s_offset = 0x0;
     loop {
@@ -140,7 +156,11 @@ fn read_string(cotw: &Process, address: usize, offset: usize) -> String {
         result.push(byte as char);
         s_offset += 0x1;
     }
-    result.to_case(Case::Title)
+    if format {
+        result.to_case(Case::Title)
+    } else {
+        result
+    }
 }
 
 fn using_mods(game_dir: &Option<String>) -> bool {
@@ -154,7 +174,7 @@ fn using_mods(game_dir: &Option<String>) -> bool {
 }
 
 fn get_shot_base_address(base_address: usize, proc: &Process) -> usize {  
-    Pointer::new(base_address).add(proc, 0x023C9B78).add(proc, 0x30).add(proc, 0xD8).add(proc, 0x260).value()
+    Pointer::new(base_address).add(proc, 0x023C9B78).add(proc, 0x30).add(proc, 0xD8).add(proc, 0x260).address()
 }
 
 fn find_fur(proc: &Process, fur_lookup: usize, fur_lookup_offset: usize, mut max_fur_count: usize, fur_name_key: i32) -> Option<String> {
@@ -168,7 +188,7 @@ fn find_fur(proc: &Process, fur_lookup: usize, fur_lookup_offset: usize, mut max
             let fur_name_offset = read_int(proc, current_offset, 0x04);
             println!("{} + {}", fur_lookup_address, fur_name_offset);
             let fur_name_address = fur_lookup_address + fur_name_offset as usize;
-            return Some(read_string(&proc, fur_name_address as usize, 0x0));
+            return Some(read_string(&proc, fur_name_address as usize, 0x0, true));
         }
         current_offset += fur_key_size;
         max_fur_count -= 1;
@@ -177,12 +197,12 @@ fn find_fur(proc: &Process, fur_lookup: usize, fur_lookup_offset: usize, mut max
 }
 
 fn get_fur2(proc: &Process, base_address: usize, fur_name_key: i32) -> Option<String> {
-    let fur_lookup = Pointer::new(base_address).add(proc, 0x0227B640).add(proc, 0x0).add(proc, 0x0).value() + 0x10;
+    let fur_lookup = Pointer::new(base_address).add(proc, 0x0227B640).add(proc, 0x0).add(proc, 0x0).address() + 0x10;
     find_fur(proc, fur_lookup, 0x150, 0x2B2, fur_name_key)
 }
 
 fn get_fur(proc: &Process, base_address: usize, fur_name_key: i32) -> Option<String> {
-    let fur_lookup = Pointer::new(base_address).add(proc, 0x0227B640).add(proc, 0x0).add(proc, 0x10).value() + 0x10;
+    let fur_lookup = Pointer::new(base_address).add(proc, 0x0227B640).add(proc, 0x0).add(proc, 0x10).address() + 0x10;
     find_fur(proc, fur_lookup, 0x160, 0x030000, fur_name_key)
 }
 
@@ -196,7 +216,7 @@ fn get_fur_name(proc: &Process, base_address: usize, fur_name_key: i32) -> Strin
     }
 }
 
-pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>) {
+pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Sender<String>) {
     let mut last_session_score = 0i32;
     let game_proc: Process;
     let game_directory: Option<String>;
@@ -208,7 +228,7 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>) {
             game_proc = game.proc;
             game_directory = game.directory;
             base_address = game.base_address;
-            harvest_base_address = read_mem::<usize>(&game_proc, base_address, 0x023D1EF0) + 0x280;
+            harvest_base_address = Pointer::new(base_address).add(&game_proc, 0x023D1EF0).address() + 0x280;
             status_tx.send(format!("Game: 0x{:X}; Harvest: 0x{:X}", base_address, harvest_base_address)).unwrap();
             break;
         }
@@ -219,12 +239,19 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>) {
     let offsets = Offsets::new();
     loop {
         let session_score = read_int(&game_proc, harvest_base_address, offsets.session_score);
+        if session_score == -1 {
+            status_tx.send("Game has been closed. Restart to start tracking again.".to_string()).unwrap();
+            break;
+        }
+        let username_address = Pointer::new(base_address).add(&game_proc, 0x023A5580).address() + 0x390;
+        let username = read_string(&game_proc, username_address, 0x0, false);
+        user_tx.send(username).unwrap();
         if session_score != last_session_score {
             last_session_score = session_score;
             let shot_info_base_address = get_shot_base_address(base_address, &game_proc);
-            let trophy_species = read_string(&game_proc, harvest_base_address, offsets.species);
-            let trophy_reserve = read_mem::<usize>(&game_proc, harvest_base_address, offsets.reserve);
-            let trophy_reserve = read_string(&game_proc, trophy_reserve, 0x0);
+            let trophy_species = read_string(&game_proc, harvest_base_address, offsets.species, true);
+            let trophy_reserve = Pointer::new(harvest_base_address).add(&game_proc, offsets.reserve).address();
+            let trophy_reserve = read_string(&game_proc, trophy_reserve, 0x0, true);
             let trophy_rating = read_byte(&game_proc, harvest_base_address, offsets.rating);
             let score = read_float(&game_proc, harvest_base_address, offsets.score);
             let weight = read_float(&game_proc, harvest_base_address, offsets.weight);
@@ -254,7 +281,7 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>) {
                 score,
                 weight,
                 fur,
-                date: Local::now().to_string(),
+                date: Local::now().to_rfc3339(),
                 gender,
                 cash,
                 xp,
@@ -265,6 +292,7 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>) {
                 shot_distance: read_float(&game_proc, shot_info_base_address, offsets.shot_distance),
                 shot_damage: read_float(&game_proc, shot_info_base_address, offsets.shot_damage) * 100.0,
                 mods: using_mods(&game_directory),
+                grind: None,
             };
             if data::save_trophy(&trophy) {
                 trophy_tx.send(trophy).unwrap();

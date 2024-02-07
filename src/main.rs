@@ -10,33 +10,37 @@ use eframe::Storage;
 use std::fmt;
 use strum::{IntoEnumIterator, VariantArray};
 use models::*;
-use egui_extras::{Column, TableBuilder, StripBuilder, Size};
+use egui_extras::{Column, Size, StripBuilder, TableBuilder};
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use std::thread;
+use chrono::prelude::*;
 
 const ICON: &[u8] = include_bytes!("../static/icon.png");
 const SMALL_FONT: f32 = 14.0;
 const MEDIUM_FONT: f32 = 16.0;
 
-fn main() -> Result<(), eframe::Error> {
+#[tokio::main]
+async fn main() -> Result<(), eframe::Error> {
     let icon_data = eframe::icon_data::from_png_bytes(ICON).expect("Failed to load icon");
     let options = eframe::NativeOptions {
-        viewport: ViewportBuilder::default().with_inner_size([1010.0, 850.0]).with_icon(icon_data),
+        viewport: ViewportBuilder::default().with_inner_size([1200.0, 800.0]).with_icon(icon_data),
         ..Default::default()
     };
+    let grinds = data::get_grinds().await;
     eframe::run_native(
-        "Trophy Lodge ",
+        "Trophy Lodge  ",
         options,
         Box::new(|cc| {
             let (status_tx, status_rx) = mpsc::channel::<String>();
+            let (user_tx, user_rx) = mpsc::channel::<String>();
             let (trophy_tx, trophy_rx) = mpsc::channel::<Trophy>();
             thread::spawn(move || {
-                game_monitor::monitor(status_tx, trophy_tx);
+                game_monitor::monitor(status_tx, trophy_tx, user_tx);
             });
 
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Box::new(MyApp::new(cc, status_rx, trophy_rx))
+            Box::new(MyApp::new(cc, status_rx, trophy_rx, user_rx, grinds))
         }),
     )
 }
@@ -70,7 +74,7 @@ where I: Iterator<Item = T>,
     ComboBox::new(format!("{}_filter", label.to_lowercase()), "")
         .selected_text(value.to_string())
         .show_ui(ui, |ui| {
-            ui.set_min_width(200.0);
+            ui.set_min_width(250.0);
             combo_options(ui, value, values, capture);
         });
 }
@@ -84,6 +88,22 @@ fn filter_data(trophy_filter: &TrophyFilter, mut data: Vec<Trophy>) -> Vec<Troph
     }
     if trophy_filter.rating != Ratings::All {
         data.retain(|x| x.rating == trophy_filter.rating);
+    }
+    if trophy_filter.gender != Gender::All {
+        data.retain(|x| x.gender == trophy_filter.gender);
+    }
+    if trophy_filter.grind != "" {
+        data.retain(|x| {
+            if let Some(grinds) = &x.grind {
+                for grind in grinds.split("/") {
+                    let same = grind.to_string() == trophy_filter.grind.clone();
+                    if same {
+                        return true;
+                    }
+                }
+            }
+            false
+        });
     }
     match trophy_filter.sort_by {
         SortBy::Date => data.sort_by(|a, b| b.date.cmp(&a.date)),
@@ -124,9 +144,7 @@ fn default_cols() -> Vec<String> {
 #[derive(PartialEq)]
 enum Sidebar {
     Trophies,
-    // Challenges,
-    // Friends,
-    Settings,
+    Grinds,
 }
 
 struct MyApp {
@@ -134,7 +152,11 @@ struct MyApp {
     species: Species,
     reserves: Reserves,
     ratings: Ratings,
+    grind: String,
+    gender: Gender,
     sort_by: SortBy,
+    user_rx: Receiver<String>,
+    username: String,
     trophies: Vec<Trophy>,
     filtered_trophies: Vec<Trophy>,
     trophy_filter: TrophyFilter,
@@ -143,13 +165,18 @@ struct MyApp {
     status_rx: Receiver<String>,
     status_msg: String,
     trophy_rx: Receiver<Trophy>,
+    grinds: Vec<Grind>,
+    grind_name: String,
+    grind_species: Species,
+    grind_reserve: Reserves,
 }
 impl MyApp {
-    fn new(cc: &eframe::CreationContext<'_>, status_rx: Receiver<String>, trophy_rx: Receiver<Trophy>) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>, status_rx: Receiver<String>, trophy_rx: Receiver<Trophy>, user_rx: Receiver<String>, grinds: Vec<Grind>) -> Self {
         let ctx = &cc.egui_ctx;
         let trophies: Vec<Trophy> = data::read_trophies();
         let filtered_trophies = trophies.clone();
         let trophy_filter = TrophyFilter::default();
+
         set_style(ctx);
 
         let mut selected_cols = default_cols();
@@ -166,7 +193,11 @@ impl MyApp {
             species: Species::All,
             reserves: Reserves::All,
             ratings: Ratings::All,
+            grind: "".to_string(),
+            gender: Gender::All,
             sort_by: SortBy::Date,
+            user_rx,
+            username: String::from(""),
             trophies,
             filtered_trophies,
             trophy_filter,
@@ -175,6 +206,10 @@ impl MyApp {
             status_rx,
             status_msg: "".to_string(),
             trophy_rx,
+            grinds,
+            grind_name: "".to_string(),
+            grind_species: Species::Unknown,
+            grind_reserve: Reserves::Unknown,
         }
     }
 }
@@ -209,7 +244,10 @@ impl eframe::App for MyApp {
                     strip.cell(|ui| { ui.small(""); });
                     strip.cell(|ui| {
                         ui.with_layout(Layout::default().with_cross_align(Align::RIGHT), |ui| {
-                            ui.small(RichText::new("mvision69").color(Color32::DEBUG_COLOR));
+                            if let Ok(username) = self.user_rx.try_recv() {
+                                self.username = username;
+                            }
+                            ui.small(RichText::new(&self.username).color(Color32::DEBUG_COLOR));
                         });
                         ui.add_space(10.0);
                         ui.group(|ui| {
@@ -231,20 +269,17 @@ impl eframe::App for MyApp {
             });
 
         SidePanel::left("left_panel")
-            .resizable(false)
-            .min_width(120.0)
-            .show(ctx, |ui| {
-                ui.vertical(|ui| {
-                    ui.add_space(10.0);
-                    ui.selectable_value(&mut self.menu, Sidebar::Trophies, "Trophies");
-                    // ui.add_space(5.0);
-                    // ui.selectable_value(&mut self.menu, Sidebar::Challenges, "Challenges");
-                    // ui.add_space(5.0);
-                    // ui.selectable_value(&mut self.menu, Sidebar::Friends, "Friends");
-                    ui.add_space(5.0);
-                    ui.selectable_value(&mut self.menu, Sidebar::Settings, "Settings");
-                });
+        .resizable(false)
+        .min_width(120.0)
+        .show(ctx, |ui| {
+            ui.vertical(|ui| {
+                ui.add_space(10.0);
+                ui.selectable_value(&mut self.menu, Sidebar::Trophies, "Trophies");
+                ui.add_space(5.0);
+                ui.selectable_value(&mut self.menu, Sidebar::Grinds, "Grinds");
+                ui.add_space(5.0);
             });
+        });
 
         CentralPanel::default().show(ctx, |ui| {                
             match self.menu {                
@@ -254,7 +289,7 @@ impl eframe::App for MyApp {
                         ui.strong("Filter & Sort");
                         ui.add_space(10.0);
                         Grid::new("filter_sort")
-                            .num_columns(5)
+                            .num_columns(7)
                             .striped(false)
                             .spacing([30.0, 10.0])
                             .show(ui, |ui| {
@@ -266,14 +301,30 @@ impl eframe::App for MyApp {
                                     self.trophy_filter.rating = x;
                                     self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
                                 });
+                                ui.label("Grind");
+                                ComboBox::new("grind_filter", "")
+                                .selected_text(&self.grind)
+                                .show_ui(ui, |ui| {
+                                    ui.set_min_width(200.0);
+                                    for g in self.grinds.iter() {
+                                        let combo = ui.selectable_value(&mut self.grind, g.name.clone(), g.name.clone());
+                                        if combo.clicked() {
+                                            self.trophy_filter.grind = g.name.clone();
+                                            self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
+                                        }
+                                    }
+                                });                                                              
                                 ui.vertical(|ui| {
                                     ui.add_space(5.0);
+                                    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
                                     if ui.button("Reset").clicked() {
                                         self.trophy_filter = TrophyFilter::default();
                                         self.species = self.trophy_filter.species;
                                         self.reserves = self.trophy_filter.reserve;
                                         self.ratings = self.trophy_filter.rating;
                                         self.sort_by = self.trophy_filter.sort_by;
+                                        self.gender = self.trophy_filter.gender;
+                                        self.grind = self.trophy_filter.grind.clone();
                                         self.filtered_trophies = self.trophies.clone();
                                     }   
                                 });                            
@@ -282,11 +333,16 @@ impl eframe::App for MyApp {
                                     self.trophy_filter.reserve = x;
                                     self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
                                 });
+                                create_combo(ui, "Gender", &mut self.gender, Gender::iter(), |x| {
+                                    self.trophy_filter.gender = x;
+                                    self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
+                                });                                
                                 create_combo(ui, "Sort By", &mut self.sort_by, SortBy::iter(), |x| {
                                     self.trophy_filter.sort_by = x;
                                     self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
-                                });
+                                });                                  
                                 ui.end_row();  
+
                             });
                         ui.add_space(20.0);
                         ui.strong("Columns");
@@ -337,14 +393,15 @@ impl eframe::App for MyApp {
                             for h in self.selected_cols.iter() {
                                 header.col(|ui| { 
                                     ui.vertical_centered(|ui| {
-                                        ui.add(Label::new(RichText::new(h).strong()).wrap(false))
+                                        ui.add(Label::new(RichText::new(h).strong()).wrap(false));
                                     }); 
                                 });
                             }
                         })
                         .body(|body| {
-                            body.rows(30.0, self.filtered_trophies.len(), |mut row| {
+                            body.rows(30.0, self.filtered_trophies.len(), |mut row| {                                  
                                 let trophy = self.filtered_trophies.get(row.index()).unwrap();
+                                let row_index = row.index().clone();
                                 if self.selected_cols.contains(&"Species".to_string()) {
                                     row.col(|ui| { 
                                         col_label(ui, trophy.species.to_string());
@@ -435,28 +492,193 @@ impl eframe::App for MyApp {
                                     row.col(|ui| { 
                                         col_label(ui, trophy.mods.to_string());
                                     });        
-                                } 
+                                }          
+                                if self.selected_cols.contains(&"Grind".to_string()) {
+                                    row.col(|ui| { 
+                                        if let Some(grinds) = &trophy.grind {
+                                            let grind_split: Vec<String> = grinds.split("/").map(|x| x.to_string()).collect();
+                                            if grind_split.len() > 1 {
+                                                ui.vertical_centered(|ui| {
+                                                    ui.horizontal(|ui| {
+                                                        ui.add_space(8.0);
+                                                        ComboBox::new(format!("{}_grind_display", row_index), "")
+                                                        .selected_text(grind_split[0].clone())
+                                                        .show_ui(ui, |ui| {
+                                                            ui.set_min_width(200.0);
+                                                            for g in grind_split {
+                                                                let _ = ui.selectable_label(false, g.clone());
+                                                            }
+                                                        }); 
+                                                    });
+                                                });                                                   
+                                            } else {
+                                                col_label(ui, grinds.clone());
+                                            }
+                                        }
+                                    });        
+                                }                                                           
                             });
                         });
-                }
-                Sidebar::Settings => {
-                    ui.label(RichText::new("Settings"));
+                },
+                Sidebar::Grinds => {
+                    ui.collapsing("Create", |ui| {
+                        ui.add_space(20.0);
+                        Grid::new("grinds")
+                        .num_columns(2)
+                        .spacing([10.0, 10.0])
+                        .show(ui, |ui| {
+                            ui.label("Name");
+                            ui.text_edit_singleline(&mut self.grind_name);
+                            ui.end_row();
+                            create_combo(ui, "Species", &mut self.grind_species.clone(), Species::iter(), |x| { 
+                                self.grind_species = x;                                                                     
+                            });           
+                            ui.end_row();      
+                            create_combo(ui, "Reserve", &mut self.grind_reserve.clone(), Reserves::iter(), |x| { 
+                                self.grind_reserve = x;                                                                     
+                            });           
+                            ui.end_row();       
+                        });
+                        ui.add_space(10.0);
+                        ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::DARK_GREEN;
+                        if ui.button("Start Grind").clicked() {
+                            let grind = Grind {
+                                name: self.grind_name.clone(),
+                                species: self.grind_species.clone().to_string(),
+                                reserve: self.grind_reserve.clone().to_string(),
+                                active: true,
+                                start: Local::now().to_rfc3339().to_owned(),
+                                kills: 0,
+                                is_deleted: false,
+                            };
+                            if grind.valid(&self.grinds) {
+                                tokio::spawn(data::add_grind(grind.clone()));
+                                self.grinds.push(grind);
+                                self.grind_name = "".to_string();
+                                self.grind_species = Species::Unknown;
+                                self.grind_reserve = Reserves::Unknown;
+                            }
+                        }                 
+                        ui.add_space(20.0);
+                        ui.separator();
+                    });
+                    ui.add_space(20.0);
+                    let grinds = TableBuilder::new(ui)
+                        .striped(true)
+                        .resizable(true)
+                        .sense(Sense::click())
+                        .max_scroll_height(1000.0)
+                        .auto_shrink(false)
+                        .columns(Column::auto(), 7);
+                    grinds.header(30.0, |mut header| {
+                        header.col(|ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.add(Label::new(RichText::new("Name").strong()).wrap(false));
+                            });
+                        });
+                        header.col(|ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.add(Label::new(RichText::new("Species").strong()).wrap(false));
+                            });
+                        }); 
+                        header.col(|ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.add(Label::new(RichText::new("Reserve").strong()).wrap(false));
+                            });
+                        }); 
+                        header.col(|ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.add(Label::new(RichText::new("Days").strong()).wrap(false));
+                            });
+                        });
+                        header.col(|ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.add(Label::new(RichText::new("Kills").strong()).wrap(false));
+                            });
+                        }); 
+                        header.col(|ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.add(Label::new(RichText::new("Active").strong()).wrap(false));
+                            });
+                        }); 
+                        header.col(|ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.add(Label::new(RichText::new("Delete").strong()).wrap(false));
+                            });
+                        });
+                    }).body(|body| {
+                        self.grinds.retain(|x| !x.is_deleted);
+                        body.rows(30.0, self.grinds.len(), |mut row| {
+                            let grind = self.grinds.get_mut(row.index()).unwrap();
+                            row.col(|ui| {
+                                col_label(ui, grind.name.clone());
+                            });
+                            row.col(|ui| {
+                                col_label(ui, grind.species.to_string());
+                            });
+                            row.col(|ui| {
+                                col_label(ui, grind.reserve.to_string());
+                            });
+                            row.col(|ui| {
+                                let past = DateTime::parse_from_rfc3339(&grind.start).unwrap();
+                                let now = Local::now();
+                                let duration = now.signed_duration_since(past);
+                                col_label(ui, duration.num_days().to_string());
+                            });
+                            row.col(|ui| {
+                                col_label(ui, grind.kills.to_string());
+                            });
+                            row.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    if grind.active {
+                                        ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
+                                        if ui.button("Stop").clicked() {
+                                            tokio::spawn(data::stop_grind(grind.name.clone()));
+                                            grind.active = false;                                        
+                                        }
+                                    } else {
+                                        ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::DARK_GREEN;
+                                        if ui.button("Start").clicked() {
+                                            tokio::spawn(data::start_grind(grind.name.clone()));
+                                            grind.active = true;
+                                        }
+                                    }
+                                });
+                            });  
+                            row.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
+                                    if ui.button("Delete").clicked() {
+                                        tokio::spawn(data::remove_grind(grind.name.clone()));
+                                        grind.is_deleted = true;
+                                    }
+                                });
+                            });                                                         
+                        });
+                    });
                 }
             }
         });
 
         TopBottomPanel::bottom("bottom_panel")
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.add_space(10.0);
-                if let Ok(status) = self.status_rx.try_recv() {
-                    self.status_msg = status;
+        .resizable(false)
+        .show(ctx, |ui| {
+            ui.add_space(10.0);
+            if let Ok(status) = self.status_rx.try_recv() {
+                self.status_msg = status;
+            } else {
+                ctx.request_repaint();
+            }
+            ui.horizontal(|ui| {
+                if self.status_msg.contains("Game has been closed") {
+                    ui.label(RichText::new(&self.status_msg).color(Color32::BROWN).size(SMALL_FONT));
                 } else {
-                    ctx.request_repaint();
+                    ui.label(RichText::new(&self.status_msg).color(Color32::LIGHT_YELLOW).size(SMALL_FONT));
+                    ui.spinner();
                 }
-                ui.label(RichText::new(&self.status_msg).color(Color32::LIGHT_YELLOW).size(SMALL_FONT));
-                ui.add_space(10.0);
             });
+            ui.add_space(10.0);
+        });
     }
 
     fn save(&mut self, storage: &mut dyn Storage) {

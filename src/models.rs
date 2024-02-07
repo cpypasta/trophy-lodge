@@ -1,28 +1,11 @@
-use strum::VariantArray;
 use strum_macros::{EnumIter, VariantArray, EnumString};
 use std::fmt;
 use std::cmp::{Ord, Ordering};
 use convert_case::{Case, Casing};
-use rand::prelude::*;
 use serde::{Serialize, Deserialize};
 
 fn fmt_model(value: &impl fmt::Debug) -> String {
     format!("{:?}", value).to_case(Case::Title)
-}
-
-fn random_enum<I, T>(items: I) -> T 
-where I: Iterator<Item = T>,
-      T: fmt::Display + Clone {
-    let mut rng = rand::thread_rng();
-    items.filter(|x| x.to_string() != "All").choose(&mut rng).unwrap()
-}
-
-fn random_f32() -> f32 {
-    let mut rng = rand::thread_rng();
-    let value = rng.gen_range(0.0..100.0) as f32;
-    let scale = 100.0;
-    let rounded = (value * scale).round() / scale;
-    rounded
 }
 
 #[derive(PartialEq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString, Serialize, Deserialize)]
@@ -212,8 +195,9 @@ impl fmt::Display for SortBy {
     }
 }
 
-#[derive(Debug, VariantArray, Clone, Copy, EnumString, Serialize, Deserialize)]
+#[derive(Debug, VariantArray, Clone, Copy, EnumString, Serialize, Deserialize, PartialEq, EnumIter)]
 pub enum Gender {
+    All,
     Male,
     Female,
 }
@@ -244,37 +228,15 @@ pub struct Trophy {
     pub shot_distance: f32,
     pub shot_damage: f32,
     pub mods: bool,
-}
-
-impl Default for Trophy {
-    fn default() -> Self {
-        Trophy {
-            id: random_f32(),
-            species: random_enum(Species::VARIANTS.iter()).to_owned(),
-            reserve: random_enum(Reserves::VARIANTS.iter()).to_owned(),
-            rating: random_enum(Ratings::VARIANTS.iter()).to_owned(),
-            score: random_f32(),
-            weight: random_f32(),
-            date: "2021-01-01 12:00:00".to_string(),
-            fur: "Dark".to_string(),
-            gender: random_enum(Gender::VARIANTS.iter()).to_owned(),
-            cash: 100,
-            xp: 200,
-            session_score: 300,
-            integrity: true,
-            tracking: random_f32(),
-            weapon_score: random_f32(),
-            shot_distance: random_f32(),
-            shot_damage: random_f32(),
-            mods: false,
-        }
-    }
+    pub grind: Option<String>,
 }
 
 pub struct TrophyFilter {
     pub species: Species,
     pub reserve: Reserves,
     pub rating: Ratings,
+    pub gender: Gender,
+    pub grind: String,
     pub sort_by: SortBy,
 }
 impl Default for TrophyFilter {
@@ -283,6 +245,8 @@ impl Default for TrophyFilter {
             species: Species::All,
             reserve: Reserves::All,
             rating: Ratings::All,
+            gender: Gender::All,
+            grind: "".to_string(),
             sort_by: SortBy::Date,
         }
     }
@@ -308,6 +272,7 @@ pub enum TrophyCols {
     ShotDistance,
     ShotDamage,
     Mods,
+    Grind,
 }
 impl fmt::Display for TrophyCols {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -334,6 +299,7 @@ fn trophy_col_order(col: &TrophyCols) -> i32 {
         TrophyCols::ShotDistance => 14,
         TrophyCols::ShotDamage => 15,
         TrophyCols::Mods => 16,
+        TrophyCols::Grind => 17,
     }
 }
 impl Ord for TrophyCols {
@@ -341,5 +307,35 @@ impl Ord for TrophyCols {
         let x = trophy_col_order(self);
         let y = trophy_col_order(other);
         x.cmp(&y)
+    }
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct Grind {
+    pub name: String,
+    pub species: String,
+    pub reserve: String,
+    pub active: bool,
+    pub start: String,
+    pub kills: i64,
+    pub is_deleted: bool,
+}
+impl Grind {
+    fn grind_exists(name: String, grinds: &Vec<Grind>) -> bool {
+        for g in grinds {
+            if g.name == name {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn valid(&self, grinds: &Vec<Grind>) -> bool {
+        self.name != "" && 
+        self.species != Species::All.to_string() && 
+        self.reserve != Reserves::All.to_string() && 
+        self.species != Species::Unknown.to_string() && 
+        self.reserve != Reserves::Unknown.to_string() &&
+        !Grind::grind_exists(self.name.to_string(), grinds)
     }
 }

@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS grinds (
+    name TEXT NOT NULL PRIMARY KEY,
+    species TEXT NOT NULL,
+    reserve TEXT NOT NULL,
+    active BOOLEAN NOT NULL,
+    start TEXT NOT NULL,
+    kills INTEGER NOT NULL,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
