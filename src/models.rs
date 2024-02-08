@@ -66,7 +66,7 @@ pub enum Species {
     NorthernBobwhiteQuail,
     Pheasant,
     PlainsBison,
-    ProngHorn,
+    Pronghorn,
     Puma,
     Raccoon,
     RaccoonDog,
@@ -139,7 +139,7 @@ impl fmt::Display for Reserves {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString, Deserialize, Serialize)]
+#[derive(PartialOrd, PartialEq, Eq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString, Deserialize, Serialize)]
 #[strum(serialize_all = "title_case")]
 pub enum Ratings {
     All,
@@ -172,11 +172,6 @@ impl Ord for Ratings {
         let x = ratings_to_i32(self);
         let y = &ratings_to_i32(other);
         x.cmp(y)
-    }
-}
-impl PartialOrd for Ratings {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
     }
 }
 
@@ -229,6 +224,11 @@ pub struct Trophy {
     pub shot_damage: f32,
     pub mods: bool,
     pub grind: Option<String>,
+}
+impl Trophy {
+    pub fn valid(&self) -> bool {
+        self.species != Species::Unknown && self.reserve != Reserves::Unknown
+    }
 }
 
 pub struct TrophyFilter {
@@ -310,15 +310,28 @@ impl Ord for TrophyCols {
     }
 }
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Grind {
     pub name: String,
-    pub species: String,
-    pub reserve: String,
+    pub species: Species,
+    pub reserve: Reserves,
     pub active: bool,
     pub start: String,
     pub kills: i64,
     pub is_deleted: bool,
+}
+impl Default for Grind {
+    fn default() -> Self {
+        Grind {
+            name: rand::random::<u32>().to_string(),
+            species: Species::RedDeer,
+            reserve: Reserves::Hirschfelden,
+            active: false,
+            start: chrono::Local::now().to_rfc3339(),
+            kills: 69,
+            is_deleted: false,
+        }
+    }
 }
 impl Grind {
     fn grind_exists(name: String, grinds: &Vec<Grind>) -> bool {
@@ -332,10 +345,14 @@ impl Grind {
 
     pub fn valid(&self, grinds: &Vec<Grind>) -> bool {
         self.name != "" && 
-        self.species != Species::All.to_string() && 
-        self.reserve != Reserves::All.to_string() && 
-        self.species != Species::Unknown.to_string() && 
-        self.reserve != Reserves::Unknown.to_string() &&
+        self.species != Species::All && 
+        self.reserve != Reserves::All && 
+        self.species != Species::Unknown && 
+        self.reserve != Reserves::Unknown &&
         !Grind::grind_exists(self.name.to_string(), grinds)
     }
+}
+
+pub struct GrindKill {
+    pub name: String,
 }

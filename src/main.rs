@@ -13,34 +13,33 @@ use models::*;
 use egui_extras::{Column, Size, StripBuilder, TableBuilder};
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
-use std::thread;
 use chrono::prelude::*;
+use std::thread;
 
 const ICON: &[u8] = include_bytes!("../static/icon.png");
 const SMALL_FONT: f32 = 14.0;
 const MEDIUM_FONT: f32 = 16.0;
 
-#[tokio::main]
-async fn main() -> Result<(), eframe::Error> {
+fn main() -> Result<(), eframe::Error> {
     let icon_data = eframe::icon_data::from_png_bytes(ICON).expect("Failed to load icon");
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default().with_inner_size([1200.0, 800.0]).with_icon(icon_data),
         ..Default::default()
     };
-    let grinds = data::get_grinds().await;
     eframe::run_native(
-        "Trophy Lodge  ",
+        "Trophy Lodge 🎯 ",
         options,
         Box::new(|cc| {
             let (status_tx, status_rx) = mpsc::channel::<String>();
             let (user_tx, user_rx) = mpsc::channel::<String>();
             let (trophy_tx, trophy_rx) = mpsc::channel::<Trophy>();
+            let (grind_tx, grind_rx) = mpsc::channel::<GrindKill>();
             thread::spawn(move || {
-                game_monitor::monitor(status_tx, trophy_tx, user_tx);
+                game_monitor::monitor(status_tx, trophy_tx, user_tx, grind_tx);
             });
 
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Box::new(MyApp::new(cc, status_rx, trophy_rx, user_rx, grinds))
+            Box::new(MyApp::new(cc, status_rx, trophy_rx, user_rx, grind_rx))
         }),
     )
 }
@@ -137,6 +136,7 @@ fn default_cols() -> Vec<String> {
         TrophyCols::Weight,
         TrophyCols::ShotDistance,
         TrophyCols::ShotDamage,
+        TrophyCols::Fur,
     ];
     cols.iter().map(|x| x.to_string()).collect()
 }
@@ -169,14 +169,23 @@ struct MyApp {
     grind_name: String,
     grind_species: Species,
     grind_reserve: Reserves,
+    grind_rx: Receiver<GrindKill>,
 }
 impl MyApp {
-    fn new(cc: &eframe::CreationContext<'_>, status_rx: Receiver<String>, trophy_rx: Receiver<Trophy>, user_rx: Receiver<String>, grinds: Vec<Grind>) -> Self {
+    fn new(
+        cc: &eframe::CreationContext<'_>, 
+        status_rx: Receiver<String>, 
+        trophy_rx: Receiver<Trophy>, 
+        user_rx: Receiver<String>, 
+        grind_rx: Receiver<GrindKill>
+    ) -> Self {
+        data::init();
+
         let ctx = &cc.egui_ctx;
         let trophies: Vec<Trophy> = data::read_trophies();
         let filtered_trophies = trophies.clone();
         let trophy_filter = TrophyFilter::default();
-
+        let grinds = data::get_grinds();
         set_style(ctx);
 
         let mut selected_cols = default_cols();
@@ -197,7 +206,7 @@ impl MyApp {
             gender: Gender::All,
             sort_by: SortBy::Date,
             user_rx,
-            username: String::from(""),
+            username: String::from("Unknown User"),
             trophies,
             filtered_trophies,
             trophy_filter,
@@ -210,6 +219,7 @@ impl MyApp {
             grind_name: "".to_string(),
             grind_species: Species::Unknown,
             grind_reserve: Reserves::Unknown,
+            grind_rx,
         }
     }
 }
@@ -222,9 +232,9 @@ impl eframe::App for MyApp {
             .show(ctx, |ui| { 
                 StripBuilder::new(ui)
                 .size(Size::exact(90.0))
-                .size(Size::exact(450.0))
+                .size(Size::exact(320.0))
                 .size(Size::remainder())
-                .size(Size::exact(140.0))
+                .size(Size::exact(220.0))
                 .horizontal(|mut strip| {
                     strip.cell(|ui| {
                         ui.vertical(|ui| {
@@ -241,27 +251,48 @@ impl eframe::App for MyApp {
                             ui.small(RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))));
                         });
                     });
-                    strip.cell(|ui| { ui.small(""); });
+                    strip.cell(|ui| { 
+                       ui.with_layout(Layout::top_down(Align::RIGHT), |ui| {
+                            ui.horizontal(|ui| {   
+                                ui.add_space(5.0);
+                                if self.status_msg.contains("Game has been closed") {
+                                    ui.label(RichText::new(&self.status_msg).color(Color32::RED).size(SMALL_FONT));
+                                } else {
+                                    if self.status_msg.contains("Waiting for game") {
+                                        ui.spinner();
+                                    }
+                                    ui.label(RichText::new(&self.status_msg).color(Color32::LIGHT_YELLOW).size(SMALL_FONT));
+                                }
+                            });  
+                        }); 
+                    });
                     strip.cell(|ui| {
-                        ui.with_layout(Layout::default().with_cross_align(Align::RIGHT), |ui| {
+                        ui.vertical(|ui| {
                             if let Ok(username) = self.user_rx.try_recv() {
-                                self.username = username;
+                                if username != "" {
+                                    self.username = username;
+                                }
                             }
-                            ui.small(RichText::new(&self.username).color(Color32::DEBUG_COLOR));
-                        });
-                        ui.add_space(10.0);
-                        ui.group(|ui| {
-                            Grid::new("summary_metrics")
-                            .num_columns(2)
-                            .striped(false)
-                            .spacing([5.0, 5.0])
-                            .show(ui, |ui| {
-                                summary_metric(ui, "Trophies", self.trophies.len().to_string());
-                                ui.end_row();
-                                summary_metric(ui, "Diamonds", self.trophies.iter().filter(|x| x.rating == Ratings::Diamond).count().to_string());
-                                ui.end_row();
-                                summary_metric(ui, "Great Ones", self.trophies.iter().filter(|x| x.rating == Ratings::GreatOne).count().to_string());
-                                ui.end_row();
+                            ui.with_layout(Layout::right_to_left(Align::LEFT), |ui| {
+                                ui.small(RichText::new(&self.username).color(Color32::DEBUG_COLOR));
+                            });
+                            ui.add_space(10.0);
+                            ui.horizontal(|ui| {
+                            ui.add_space(80.0);
+                            ui.group(|ui| {
+                                Grid::new("summary_metrics")
+                                .num_columns(2)
+                                .striped(false)
+                                .spacing([5.0, 5.0])
+                                .show(ui, |ui| {
+                                    summary_metric(ui, "Trophies", self.trophies.len().to_string());
+                                    ui.end_row();
+                                    summary_metric(ui, "Diamonds", self.trophies.iter().filter(|x| x.rating == Ratings::Diamond).count().to_string());
+                                    ui.end_row();
+                                    summary_metric(ui, "Great Ones", self.trophies.iter().filter(|x| x.rating == Ratings::GreatOne).count().to_string());
+                                    ui.end_row();
+                                });
+                            });
                             });
                         });
                     });               
@@ -380,8 +411,7 @@ impl eframe::App for MyApp {
                         .striped(true)
                         .resizable(true)                        
                         .sense(Sense::click())
-                        .max_scroll_height(1000.0)
-                        .auto_shrink(false)
+                        .max_scroll_height(f32::INFINITY)
                         .columns(Column::auto(), self.selected_cols.len());
                     trophies
                         .header(30.0, |mut header| {
@@ -544,15 +574,15 @@ impl eframe::App for MyApp {
                         if ui.button("Start Grind").clicked() {
                             let grind = Grind {
                                 name: self.grind_name.clone(),
-                                species: self.grind_species.clone().to_string(),
-                                reserve: self.grind_reserve.clone().to_string(),
+                                species: self.grind_species.clone(),
+                                reserve: self.grind_reserve.clone(),
                                 active: true,
                                 start: Local::now().to_rfc3339().to_owned(),
                                 kills: 0,
                                 is_deleted: false,
                             };
                             if grind.valid(&self.grinds) {
-                                tokio::spawn(data::add_grind(grind.clone()));
+                                data::add_grind(grind.clone());
                                 self.grinds.push(grind);
                                 self.grind_name = "".to_string();
                                 self.grind_species = Species::Unknown;
@@ -567,8 +597,7 @@ impl eframe::App for MyApp {
                         .striped(true)
                         .resizable(true)
                         .sense(Sense::click())
-                        .max_scroll_height(1000.0)
-                        .auto_shrink(false)
+                        .max_scroll_height(f32::INFINITY)
                         .columns(Column::auto(), 7);
                     grinds.header(30.0, |mut header| {
                         header.col(|ui| {
@@ -608,6 +637,14 @@ impl eframe::App for MyApp {
                         });
                     }).body(|body| {
                         self.grinds.retain(|x| !x.is_deleted);
+
+                        if let Ok(grind_kill) = self.grind_rx.try_recv() {
+                            for grind in self.grinds.iter_mut() {
+                                if grind.name == grind_kill.name {
+                                    grind.kills += 1;
+                                }
+                            }
+                        } 
                         body.rows(30.0, self.grinds.len(), |mut row| {
                             let grind = self.grinds.get_mut(row.index()).unwrap();
                             row.col(|ui| {
@@ -633,13 +670,13 @@ impl eframe::App for MyApp {
                                     if grind.active {
                                         ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
                                         if ui.button("Stop").clicked() {
-                                            tokio::spawn(data::stop_grind(grind.name.clone()));
+                                            data::stop_grind(grind.name.clone());
                                             grind.active = false;                                        
                                         }
                                     } else {
                                         ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::DARK_GREEN;
                                         if ui.button("Start").clicked() {
-                                            tokio::spawn(data::start_grind(grind.name.clone()));
+                                            data::start_grind(grind.name.clone());
                                             grind.active = true;
                                         }
                                     }
@@ -649,7 +686,7 @@ impl eframe::App for MyApp {
                                 ui.vertical_centered(|ui| {
                                     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
                                     if ui.button("Delete").clicked() {
-                                        tokio::spawn(data::remove_grind(grind.name.clone()));
+                                        data::remove_grind(grind.name.clone());
                                         grind.is_deleted = true;
                                     }
                                 });
@@ -660,25 +697,11 @@ impl eframe::App for MyApp {
             }
         });
 
-        TopBottomPanel::bottom("bottom_panel")
-        .resizable(false)
-        .show(ctx, |ui| {
-            ui.add_space(10.0);
-            if let Ok(status) = self.status_rx.try_recv() {
-                self.status_msg = status;
-            } else {
-                ctx.request_repaint();
-            }
-            ui.horizontal(|ui| {
-                if self.status_msg.contains("Game has been closed") {
-                    ui.label(RichText::new(&self.status_msg).color(Color32::BROWN).size(SMALL_FONT));
-                } else {
-                    ui.label(RichText::new(&self.status_msg).color(Color32::LIGHT_YELLOW).size(SMALL_FONT));
-                    ui.spinner();
-                }
-            });
-            ui.add_space(10.0);
-        });
+        if let Ok(status) = self.status_rx.try_recv() {
+            self.status_msg = status;
+        } else {
+            ctx.request_repaint();
+        }
     }
 
     fn save(&mut self, storage: &mut dyn Storage) {
