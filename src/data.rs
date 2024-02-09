@@ -79,7 +79,7 @@ pub fn read_trophies() -> Vec<Trophy> {
     read_csv(TROPHIES)
 }
 
-fn trophy_exists(trophy: &Trophy) -> bool {
+pub fn trophy_exists(trophy: &Trophy) -> bool {
     let trophies = read_trophies();
     for t in trophies {
         if t.id == trophy.id {
@@ -89,17 +89,13 @@ fn trophy_exists(trophy: &Trophy) -> bool {
     false
 }
 
-pub fn save_trophy(trophy: &Trophy, grind_tx: &Sender<GrindKill>) -> bool {
-    if trophy_exists(trophy) {
-        return false;
-    }
+pub fn save_trophy(trophy: &Trophy, grind_tx: &Sender<GrindKill>) {
     append_csv(TROPHIES, vec![trophy]);
     let grinds = grinds_to_add(&trophy.species, &trophy.reserve);
     for g in grinds {
         add_kill(&g);
         grind_tx.send(GrindKill { name: g.clone() }).unwrap();
     }
-    true
 }
 
 pub fn get_grinds() -> Vec<Grind>{

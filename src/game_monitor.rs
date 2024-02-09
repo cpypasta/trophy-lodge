@@ -157,7 +157,7 @@ fn read_string(cotw: &Process, address: usize, offset: usize, format: bool) -> S
         s_offset += 0x1;
     }
     if format {
-        result.to_case(Case::Title)
+        result.replace("-", " ").to_case(Case::Title)
     } else {
         result
     }
@@ -215,6 +215,10 @@ fn get_fur_name(proc: &Process, base_address: usize, fur_name_key: i32) -> Strin
     }
 }
 
+fn valid_string(s: &String) -> bool {
+    s != "" && s.chars().all(|c| c.is_whitespace() || c.is_ascii_alphabetic())
+}
+
 pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Sender<String>, grind_tx: Sender<GrindKill>) {
     let mut last_weight = 0f32;
     let game_proc: Process;
@@ -253,13 +257,18 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
         let weight = read_float(&game_proc, harvest_base_address, offsets.weight);
         println!("Weight: {}", weight);
         if game_open && weight != last_weight && weight > 0.0e-15 { 
-            status_tx.send(format!("Processing trophy {}...", weight)).unwrap_or_default();           
             last_weight = weight;
             let shot_info_base_address = get_shot_base_address(base_address, &game_proc);
-            let trophy_species = read_string(&game_proc, harvest_base_address, offsets.species, true);
+            let mut trophy_species = read_string(&game_proc, harvest_base_address, offsets.species, true);
+            if !valid_string(&trophy_species) {
+                trophy_species = read_string(&game_proc, read_usize(&game_proc, harvest_base_address, 0x0), 0x0, true);
+            }
             let species = Species::from_str(&trophy_species).unwrap_or(Species::Unknown);
             let trophy_reserve = Pointer::new(harvest_base_address).add(&game_proc, offsets.reserve).address();
-            let trophy_reserve = read_string(&game_proc, trophy_reserve, 0x0, true);
+            let mut trophy_reserve = read_string(&game_proc, trophy_reserve, 0x0, true);
+            if !valid_string(&trophy_reserve) {
+                trophy_reserve = read_string(&game_proc, harvest_base_address, offsets.reserve, true);
+            }
             let reserve = Reserves::from_str(&trophy_reserve).unwrap_or(Reserves::Unknown);
             let trophy_rating = read_byte(&game_proc, harvest_base_address, offsets.rating);
             let score = read_float(&game_proc, harvest_base_address, offsets.score);
@@ -267,7 +276,8 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
             let cash = read_int(&game_proc, harvest_base_address, offsets.cash);
             let xp = read_int(&game_proc, harvest_base_address, offsets.xp);
             let rating = match trophy_rating {
-                1 => Ratings::Diamond,
+                0 => Ratings::Diamond,
+                1 => Ratings::Gold,
                 2 => Ratings::Silver,
                 3 => Ratings::Bronze,
                 4 => Ratings::None,
@@ -280,6 +290,13 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
             };            
             let fur_key = read_int(&game_proc, harvest_base_address, offsets.fur_offset);
             let fur = get_fur_name(&game_proc, base_address, fur_key);
+            let grind_trophy = data::grinds_to_add(&species, &reserve);
+            let grind = if grind_trophy.len() > 0 {
+                Some(grind_trophy.join("/"))
+            } else {
+                None
+            };
+
             let trophy = Trophy {
                 id: score + weight + tracking + cash as f32 + xp as f32,
                 species,
@@ -299,13 +316,21 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
                 shot_distance: read_float(&game_proc, shot_info_base_address, offsets.shot_distance),
                 shot_damage: read_float(&game_proc, shot_info_base_address, offsets.shot_damage) * 100.0,
                 mods: using_mods(&game_directory),
-                grind: Some(data::grinds_to_add(&species, &reserve).join("/")),
+                grind,
             };
-            if trophy.valid() && data::save_trophy(&trophy, &grind_tx) {
-                trophy_tx.send(trophy).unwrap_or_default();
-                status_tx.send(format!("Stored {} trophy from {}", trophy_species, trophy_reserve)).unwrap_or_default();
+            if trophy.valid() {
+                if !data::trophy_exists(&trophy) {
+                    data::save_trophy(&trophy, &grind_tx);
+                    trophy_tx.send(trophy).unwrap_or_default();
+                    status_tx.send(format!("Stored {} trophy from {}", trophy_species, trophy_reserve)).unwrap_or_default();
+                } else {
+                    status_tx.send("Trophy is already saved".to_string()).unwrap_or_default();
+                }
             } else {
-                status_tx.send("Problem processing trophy".to_string()).unwrap_or_default();
+                status_tx.send(format!("Problem processing trophy with name {trophy_species}")).unwrap_or_default();
+                println!("{}", trophy_species);
+                println!("{}", trophy_reserve);
+                println!("{:?}", trophy);
             }                
         }
         thread::sleep(Duration::from_secs(3));

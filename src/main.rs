@@ -23,11 +23,11 @@ const MEDIUM_FONT: f32 = 16.0;
 fn main() -> Result<(), eframe::Error> {
     let icon_data = eframe::icon_data::from_png_bytes(ICON).expect("Failed to load icon");
     let options = eframe::NativeOptions {
-        viewport: ViewportBuilder::default().with_inner_size([1200.0, 800.0]).with_icon(icon_data),
+        viewport: ViewportBuilder::default().with_inner_size([1300.0, 800.0]).with_icon(icon_data),
         ..Default::default()
     };
     eframe::run_native(
-        "Trophy Lodge 🎯 ",
+        "Trophy Lodge 🎯",
         options,
         Box::new(|cc| {
             let (status_tx, status_rx) = mpsc::channel::<String>();
@@ -136,7 +136,6 @@ fn default_cols() -> Vec<String> {
         TrophyCols::Weight,
         TrophyCols::ShotDistance,
         TrophyCols::ShotDamage,
-        TrophyCols::Fur,
     ];
     cols.iter().map(|x| x.to_string()).collect()
 }
