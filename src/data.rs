@@ -102,7 +102,7 @@ pub fn get_grinds() -> Vec<Grind>{
     read_csv(GRINDS)
 }
 
-pub fn grinds_to_add(species: &Species, reserve: &Reserves) -> Vec<String> {
+pub fn grinds_to_add(species: &Species, reserve: &Reserve) -> Vec<String> {
     get_grinds()
         .iter()
         .filter(|g| g.species == *species && g.reserve == *reserve && g.active == true)

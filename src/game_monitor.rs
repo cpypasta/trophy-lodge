@@ -5,6 +5,7 @@ use std::thread;
 use std::time::Duration;
 use std::str::FromStr;
 use std::path::PathBuf;
+use std::convert::From;
 use crate::models::*;
 use crate::data;
 use chrono::prelude::*;
@@ -242,6 +243,8 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
     let offsets = Offsets::new();
     let mut game_open = false;
     loop {
+        // TODO: if i get to this point and session_score is -1 for a certain period of time, you are stuck
+        // i suspect that the harvest base is invalid earlier
         let session_score = read_int(&game_proc, harvest_base_address, offsets.session_score);
         println!("Session score: {}", session_score);
         if session_score == -1 && game_open {
@@ -269,19 +272,19 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
             if !valid_string(&trophy_reserve) {
                 trophy_reserve = read_string(&game_proc, harvest_base_address, offsets.reserve, true);
             }
-            let reserve = Reserves::from_str(&trophy_reserve).unwrap_or(Reserves::Unknown);
+            let reserve = Reserve::from_str(&trophy_reserve).unwrap_or(Reserve::Unknown);
             let trophy_rating = read_byte(&game_proc, harvest_base_address, offsets.rating);
             let score = read_float(&game_proc, harvest_base_address, offsets.score);
             let tracking = read_float(&game_proc, base_address, offsets.tracking);
             let cash = read_int(&game_proc, harvest_base_address, offsets.cash);
             let xp = read_int(&game_proc, harvest_base_address, offsets.xp);
             let rating = match trophy_rating {
-                0 => Ratings::Diamond,
-                1 => Ratings::Gold,
-                2 => Ratings::Silver,
-                3 => Ratings::Bronze,
-                4 => Ratings::None,
-                _ => Ratings::GreatOne,
+                0 => Rating::Diamond,
+                1 => Rating::Gold,
+                2 => Rating::Silver,
+                3 => Rating::Bronze,
+                4 => Rating::None,
+                _ => Rating::GreatOne,
             };
             let trophy_gender = read_int(&game_proc, harvest_base_address, offsets.gender);
             let gender = match trophy_gender {
@@ -310,12 +313,12 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
                 cash,
                 xp,
                 session_score,
-                integrity: read_byte(&game_proc, harvest_base_address, offsets.integrity) == 1,
+                integrity: Boolean::from(read_byte(&game_proc, harvest_base_address, offsets.integrity) == 1),
                 tracking,
                 weapon_score: read_float(&game_proc, shot_info_base_address, offsets.weapon_score),
                 shot_distance: read_float(&game_proc, shot_info_base_address, offsets.shot_distance),
                 shot_damage: read_float(&game_proc, shot_info_base_address, offsets.shot_damage) * 100.0,
-                mods: using_mods(&game_directory),
+                mods: Boolean::from(using_mods(&game_directory)),
                 grind,
             };
             if trophy.valid() {

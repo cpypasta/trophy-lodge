@@ -3,6 +3,7 @@
 mod models;
 mod data;
 mod game_monitor;
+mod challenges;
 
 use egui::*;
 use std::str::FromStr;
@@ -55,25 +56,25 @@ fn set_style(ctx: &Context) {
     ctx.set_style(style);
 }
 
-fn combo_options<I, T, F: FnMut(T)>(ui: &mut Ui, current: &mut T, values: I, mut capture: F) 
+fn combo_options<I, T, F: FnMut(T)>(ui: &mut Ui, current: T, values: I, mut capture: F) 
 where I: Iterator<Item = T>,
       T: fmt::Display + PartialEq + Copy {
     for item in values {
-        let value = ui.selectable_value(current, item, item.to_string());        
+        let value = ui.selectable_value(&mut current.clone(), item, item.to_string());        
         if value.clicked() {
             capture(item);
         }
     }
 }
 
-fn create_combo<T, I, F: FnMut(T)>(ui: &mut Ui, label: &str, value: &mut T, values: I, capture: F)
+fn create_combo<T, I, F: FnMut(T)>(ui: &mut Ui, label: &str, value: T, values: I, capture: F)
 where I: Iterator<Item = T>,
       T: fmt::Display + PartialEq + Copy {
     ui.label(label);
     ComboBox::new(format!("{}_filter", label.to_lowercase()), "")
         .selected_text(value.to_string())
         .show_ui(ui, |ui| {
-            ui.set_min_width(250.0);
+            ui.set_min_width(280.0);
             combo_options(ui, value, values, capture);
         });
 }
@@ -82,10 +83,10 @@ fn filter_data(trophy_filter: &TrophyFilter, mut data: Vec<Trophy>) -> Vec<Troph
     if trophy_filter.species != Species::All {
         data.retain(|x| x.species == trophy_filter.species);
     }
-    if trophy_filter.reserve != Reserves::All {
+    if trophy_filter.reserve != Reserve::All {
         data.retain(|x| x.reserve == trophy_filter.reserve);
     }
-    if trophy_filter.rating != Ratings::All {
+    if trophy_filter.rating != Rating::All {
         data.retain(|x| x.rating == trophy_filter.rating);
     }
     if trophy_filter.gender != Gender::All {
@@ -140,20 +141,29 @@ fn default_cols() -> Vec<String> {
     cols.iter().map(|x| x.to_string()).collect()
 }
 
+fn get_species(reserve: Reserve) -> Vec<Species> {
+    if reserve == Reserve::All || reserve == Reserve::Unknown {
+        Species::iter().collect()
+    } else {
+        reserve_species().get(&reserve).unwrap().clone()
+    }
+}
+
 #[derive(PartialEq)]
 enum Sidebar {
     Trophies,
     Grinds,
+    Challenges,
+}
+
+#[derive(PartialEq)]
+enum ChallengeTab {
+    Create,
+    Discover,
 }
 
 struct MyApp {
     menu: Sidebar,
-    species: Species,
-    reserves: Reserves,
-    ratings: Ratings,
-    grind: String,
-    gender: Gender,
-    sort_by: SortBy,
     user_rx: Receiver<String>,
     username: String,
     trophies: Vec<Trophy>,
@@ -167,8 +177,10 @@ struct MyApp {
     grinds: Vec<Grind>,
     grind_name: String,
     grind_species: Species,
-    grind_reserve: Reserves,
+    grind_reserve: Reserve,
     grind_rx: Receiver<GrindKill>,
+    challenge_tab: ChallengeTab,
+    challenge: Challenge,
 }
 impl MyApp {
     fn new(
@@ -198,12 +210,6 @@ impl MyApp {
 
         Self { 
             menu: Sidebar::Trophies, 
-            species: Species::All,
-            reserves: Reserves::All,
-            ratings: Ratings::All,
-            grind: "".to_string(),
-            gender: Gender::All,
-            sort_by: SortBy::Date,
             user_rx,
             username: String::from("Unknown User"),
             trophies,
@@ -217,8 +223,10 @@ impl MyApp {
             grinds,
             grind_name: "".to_string(),
             grind_species: Species::Unknown,
-            grind_reserve: Reserves::Unknown,
+            grind_reserve: Reserve::Unknown,
             grind_rx,
+            challenge_tab: ChallengeTab::Create,
+            challenge: Challenge::default(),
         }
     }
 }
@@ -286,9 +294,9 @@ impl eframe::App for MyApp {
                                 .show(ui, |ui| {
                                     summary_metric(ui, "Trophies", self.trophies.len().to_string());
                                     ui.end_row();
-                                    summary_metric(ui, "Diamonds", self.trophies.iter().filter(|x| x.rating == Ratings::Diamond).count().to_string());
+                                    summary_metric(ui, "Diamonds", self.trophies.iter().filter(|x| x.rating == Rating::Diamond).count().to_string());
                                     ui.end_row();
-                                    summary_metric(ui, "Great Ones", self.trophies.iter().filter(|x| x.rating == Ratings::GreatOne).count().to_string());
+                                    summary_metric(ui, "Great Ones", self.trophies.iter().filter(|x| x.rating == Rating::GreatOne).count().to_string());
                                     ui.end_row();
                                 });
                             });
@@ -308,6 +316,7 @@ impl eframe::App for MyApp {
                 ui.add_space(5.0);
                 ui.selectable_value(&mut self.menu, Sidebar::Grinds, "Grinds");
                 ui.add_space(5.0);
+                ui.selectable_value(&mut self.menu, Sidebar::Challenges, "Challenges");
             });
         });
 
@@ -315,7 +324,7 @@ impl eframe::App for MyApp {
             match self.menu {                
                 Sidebar::Trophies => {
                     ui.collapsing("Configure", |ui| {
-                        ui.add_space(20.0);
+                        ui.add_space(10.0);
                         ui.strong("Filter & Sort");
                         ui.add_space(10.0);
                         Grid::new("filter_sort")
@@ -323,21 +332,21 @@ impl eframe::App for MyApp {
                             .striped(false)
                             .spacing([30.0, 10.0])
                             .show(ui, |ui| {
-                                create_combo(ui, "Species", &mut self.species, Species::iter(), |x| { 
-                                    self.trophy_filter.species = x;
-                                    self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());                                                                        
+                                create_combo(ui, "Reserve", self.trophy_filter.reserve, Reserve::iter(), |x| {
+                                    self.trophy_filter.reserve = x;
+                                    self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
                                 });
-                                create_combo(ui, "Rating", &mut self.ratings, Ratings::iter(), |x| {
+                                create_combo(ui, "Rating", self.trophy_filter.rating, Rating::iter(), |x| {
                                     self.trophy_filter.rating = x;
                                     self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
                                 });
                                 ui.label("Grind");
                                 ComboBox::new("grind_filter", "")
-                                .selected_text(&self.grind)
+                                .selected_text(&self.trophy_filter.grind)
                                 .show_ui(ui, |ui| {
                                     ui.set_min_width(200.0);
                                     for g in self.grinds.iter() {
-                                        let combo = ui.selectable_value(&mut self.grind, g.name.clone(), g.name.clone());
+                                        let combo = ui.selectable_value(&mut self.trophy_filter.grind, g.name.clone(), g.name.clone());
                                         if combo.clicked() {
                                             self.trophy_filter.grind = g.name.clone();
                                             self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
@@ -349,32 +358,27 @@ impl eframe::App for MyApp {
                                     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
                                     if ui.button("Reset").clicked() {
                                         self.trophy_filter = TrophyFilter::default();
-                                        self.species = self.trophy_filter.species;
-                                        self.reserves = self.trophy_filter.reserve;
-                                        self.ratings = self.trophy_filter.rating;
-                                        self.sort_by = self.trophy_filter.sort_by;
-                                        self.gender = self.trophy_filter.gender;
-                                        self.grind = self.trophy_filter.grind.clone();
                                         self.filtered_trophies = self.trophies.clone();
                                     }   
                                 });                            
                                 ui.end_row(); 
-                                create_combo(ui, "Reserve", &mut self.reserves, Reserves::iter(), |x| {
-                                    self.trophy_filter.reserve = x;
-                                    self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
+                                let species = get_species(self.trophy_filter.reserve);
+                                create_combo(ui, "Species", self.trophy_filter.species, species.into_iter(), |x| { 
+                                    self.trophy_filter.species = x;
+                                    self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());                                                                        
                                 });
-                                create_combo(ui, "Gender", &mut self.gender, Gender::iter(), |x| {
+                                create_combo(ui, "Gender", self.trophy_filter.gender, Gender::iter(), |x| {
                                     self.trophy_filter.gender = x;
                                     self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
                                 });                                
-                                create_combo(ui, "Sort By", &mut self.sort_by, SortBy::iter(), |x| {
+                                create_combo(ui, "Sort By", self.trophy_filter.sort_by, SortBy::iter(), |x| {
                                     self.trophy_filter.sort_by = x;
                                     self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
                                 });                                  
                                 ui.end_row();  
 
                             });
-                        ui.add_space(20.0);
+                        ui.add_space(10.0);
                         ui.strong("Columns");
                         ui.add_space(10.0);
                         Grid::new("viewed_cols")
@@ -428,7 +432,7 @@ impl eframe::App for MyApp {
                             }
                         })
                         .body(|body| {
-                            body.rows(30.0, self.filtered_trophies.len(), |mut row| {                                  
+                            body.rows(30.0, self.filtered_trophies.len(), |mut row| {    
                                 let trophy = self.filtered_trophies.get(row.index()).unwrap();
                                 let row_index = row.index().clone();
                                 if self.selected_cols.contains(&"Species".to_string()) {
@@ -551,7 +555,7 @@ impl eframe::App for MyApp {
                 },
                 Sidebar::Grinds => {
                     ui.collapsing("Create", |ui| {
-                        ui.add_space(20.0);
+                        ui.add_space(10.0);
                         Grid::new("grinds")
                         .num_columns(2)
                         .spacing([10.0, 10.0])
@@ -559,12 +563,13 @@ impl eframe::App for MyApp {
                             ui.label("Name");
                             ui.text_edit_singleline(&mut self.grind_name);
                             ui.end_row();
-                            create_combo(ui, "Species", &mut self.grind_species.clone(), Species::iter(), |x| { 
-                                self.grind_species = x;                                                                     
-                            });           
-                            ui.end_row();      
-                            create_combo(ui, "Reserve", &mut self.grind_reserve.clone(), Reserves::iter(), |x| { 
+                            create_combo(ui, "Reserve", self.grind_reserve, Reserve::iter(), |x| { 
                                 self.grind_reserve = x;                                                                     
+                            });           
+                            ui.end_row();     
+                            let species = get_species(self.grind_reserve); 
+                            create_combo(ui, "Species", self.grind_species, species.into_iter(), |x| { 
+                                self.grind_species = x;                                                                     
                             });           
                             ui.end_row();       
                         });
@@ -585,7 +590,7 @@ impl eframe::App for MyApp {
                                 self.grinds.push(grind);
                                 self.grind_name = "".to_string();
                                 self.grind_species = Species::Unknown;
-                                self.grind_reserve = Reserves::Unknown;
+                                self.grind_reserve = Reserve::Unknown;
                             }
                         }                 
                         ui.add_space(20.0);
@@ -692,7 +697,94 @@ impl eframe::App for MyApp {
                             });                                                         
                         });
                     });
-                }
+                },
+                Sidebar::Challenges => {
+                    ui.collapsing("Create & Discover", |ui| {
+                        ui.add_space(10.0);
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(&mut self.challenge_tab, ChallengeTab::Create, "Create");
+                            ui.add_space(5.0);
+                            ui.selectable_value(&mut self.challenge_tab, ChallengeTab::Discover, "Discover");
+                        });
+                        match self.challenge_tab {
+                            ChallengeTab::Create => {
+                                ui.add_space(10.0);
+                                ui.small("(use Unknown or 0 to ignore the field)");
+                                ui.add_space(10.0);
+
+                                Grid::new("create_challenge")
+                                .num_columns(8)
+                                .striped(false)
+                                .spacing([10.0, 10.0])
+                                .show(ui, |ui| {
+                                    ui.label("Name");
+                                    ui.add(TextEdit::singleline(&mut self.challenge.name).min_size([150.0, 20.0].into()));
+                                    ui.end_row();
+                                    create_combo(ui, "Reserve", self.challenge.reserve, Reserve::iter(), |x| {
+                                        self.challenge.reserve = x;
+                                    });
+                                    create_combo(ui, "Gender", self.challenge.gender, Gender::iter(), |x| {
+                                        self.challenge.gender = x;
+                                    });
+                                    ui.label("Shot Damage (min)");
+                                    ui.add(Slider::new(&mut self.challenge.shot_damage, 0..=100));
+                                    ui.label("Kills").on_hover_text("Number of kills to complete the challenge");
+                                    ui.add(Slider::new(&mut self.challenge.kills, 0..=50));
+                                    ui.end_row();
+
+                                    let species = get_species(self.challenge.reserve);
+                                    create_combo(ui, "Species", self.challenge.species, species.into_iter(), |x| {
+                                        self.challenge.species = x;
+                                    });
+                                    create_combo(ui, "Mods", self.challenge.mods, Boolean::iter(), |x| {
+                                        self.challenge.mods = x;
+                                    });
+                                    ui.label("Shot Distance (min)");
+                                    ui.add(Slider::new(&mut self.challenge.shot_distance, 0..=1000));
+                                    ui.end_row();
+
+                                    create_combo(ui, "Weapon", self.challenge.weapon, Weapon::iter(), |x| {
+                                        self.challenge.weapon = x;
+                                    });
+                                    create_combo(ui, "Rating", self.challenge.rating, Rating::iter(), |x| {
+                                        self.challenge.rating = x;
+                                    });
+                                    ui.label("Tracking (max)");
+                                    ui.add(Slider::new(&mut self.challenge.tracking, 0..=1000));
+                                    ui.end_row();
+
+                                    create_combo(ui, "Public", self.challenge.public, Boolean::iter(), |x| {
+                                        self.challenge.public = x;
+                                    });
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.label("Total Shots (max)");
+                                    ui.add(Slider::new(&mut self.challenge.total_shots, 0..=10));
+                                    ui.end_row();
+                                });
+                                ui.add_space(10.0);
+                                ui.horizontal(|ui| {
+                                    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
+                                    if ui.button("Reset").clicked() {
+                                        self.challenge = Challenge::default();
+                                    }
+                                    ui.add_space(10.0);
+                                    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::DARK_GREEN;
+                                    if ui.button("Start Challenge").clicked() {
+                                        let challenges = challenges::process_challenge(&self.challenge);
+                                        println!("{:?}", challenges);
+                                    }
+                                });
+                                ui.add_space(20.0);
+                                ui.separator();
+                            },
+                            ChallengeTab::Discover => {
+                                ui.add_space(10.0);
+                                ui.label("coming soon...");
+                            }
+                        }
+                    });
+                },
             }
         });
 
