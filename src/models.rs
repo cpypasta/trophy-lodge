@@ -4,6 +4,7 @@ use std::cmp::{Ord, Ordering};
 use convert_case::{Case, Casing};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
+use egui::{ImageSource, include_image};
 
 fn fmt_model(value: &impl fmt::Debug) -> String {
     format!("{:?}", value).to_case(Case::Title)
@@ -112,6 +113,95 @@ impl fmt::Display for Species {
     }
 }
 
+pub fn species_image(species: &Species) -> ImageSource {
+    match species {
+        Species::AmericanAlligator => include_image!("../static/species/Alligator_frame.png"),
+        Species::AntelopeJackrabbit => include_image!("../static/species/Antilopejackrabbit_frame.png"),
+        Species::AxisDeer => include_image!("../static/species/Axisdeer_frame.png"),
+        Species::Banteng => include_image!("../static/species/Banteng_frame.png"),
+        Species::BeciteIbex => include_image!("../static/species/Beceiteibex_frame.png"),
+        Species::BighornSheep => include_image!("../static/species/Bighornsheep_frame.png"),
+        Species::BlackBear => include_image!("../static/species/Blackbear_frame.png"),
+        Species::Blackbuck => include_image!("../static/species/Blackbuck_frame.png"),
+        Species::BlackGrouse => include_image!("../static/species/BlackGrouse_frame.png"),
+        Species::BlacktailDeer => include_image!("../static/species/Blacktaildeer_frame.png"),
+        Species::BlueWildebeest => include_image!("../static/species/Bluewildebeest_frame.png"),
+        Species::Bobcat | Species::MexicanBobcat => include_image!("../static/species/Bobcat_frame.png"),
+        Species::BrownBear => include_image!("../static/species/Brownbear_frame.png"),
+        Species::CanadaGoose => include_image!("../static/species/Canadagoose_frame.png"),
+        Species::CapeBuffalo => include_image!("../static/species/Capebuffalo_frame.png"),
+        Species::Caribou => include_image!("../static/species/Caribou_frame.png"),
+        Species::Chamois => include_image!("../static/species/Chamois_frame.png"),
+        Species::CinnamonTeal => include_image!("../static/species/Cinnamonteal_frame.png"),
+        Species::Coyote => include_image!("../static/species/Coyote_frame.png"),
+        Species::SaltwaterCrocodile => include_image!("../static/species/Crocodile_frame.png"),
+        Species::EasternCottontailRabbit | Species::EuropeanRabbit | Species::WhiteTailedJackrabbit => include_image!("../static/species/ECTrabbit_frame.png"),
+        Species::EurasianTeal => include_image!("../static/species/EurasianTeal_frame.png"),
+        Species::EurasianWigeon => include_image!("../static/species/EurasianWigeon_frame.png"),
+        Species::EuropeanHare => include_image!("../static/species/Europeanhare_frame.png"),
+        Species::FallowDeer => include_image!("../static/species/Fallowdeer_frame.png"),
+        Species::FeralGoat => include_image!("../static/species/Feralgoat_frame.png"),
+        Species::FeralPig => include_image!("../static/species/Feralpig_frame.png"),
+        Species::Gemsbok => include_image!("../static/species/Gemsbok_frame.png"),
+        Species::Goldeneye => include_image!("../static/species/Goldeneye_frame.png"),
+        Species::GrayFox => include_image!("../static/species/Grayfox_frame.png"),
+        Species::GredosIbex => include_image!("../static/species/Gredosibex_frame.png"),
+        Species::GreylagGoose => include_image!("../static/species/GreylagGoose_frame.png"),
+        Species::GrayWolf => include_image!("../static/species/Greywolf_frame.png"),
+        Species::GrizzlyBear => include_image!("../static/species/Grizzlybear_frame.png"),
+        Species::HarlequinDuck => include_image!("../static/species/Harlequinduck_frame.png"),
+        Species::HazelGrouse => include_image!("../static/species/HazelGrouse_frame.png"),
+        Species::HogDeer => include_image!("../static/species/HogDeer_frame.png"),
+        Species::IberianMouflon => include_image!("../static/species/Iberianmufflon_frame.png"),
+        Species::IberianWolf => include_image!("../static/species/Iberianwolf_frame.png"),
+        Species::JavanRusa => include_image!("../static/species/JavanRusa_frame.png"),
+        Species::EasternGrayKangaroo => include_image!("../static/species/Kangaroo_frame.png"),
+        Species::LesserKudu => include_image!("../static/species/Lesserkudu_frame.png"),
+        Species::Lion => include_image!("../static/species/Lion_frame.png"),
+        Species::EurasianLynx => include_image!("../static/species/Lynx_frame.png"),
+        Species::MagpieGoose => include_image!("../static/species/MagpieGoose_frame.png"),
+        Species::Mallard => include_image!("../static/species/Mallard_frame.png"),
+        Species::Moose => include_image!("../static/species/Moose_frame.png"),
+        Species::MountainGoat => include_image!("../static/species/Mountaingoat_frame.png"),
+        Species::MountainHare => include_image!("../static/species/MountainHare_frame.png"),
+        Species::MuleDeer => include_image!("../static/species/Muledeer_frame.png"),
+        Species::SiberianMuskDeer => include_image!("../static/species/Muskdeer_frame.png"),
+        Species::CollaredPeccary => include_image!("../static/species/Peccary_frame.png"),
+        Species::RingNeckedPheasant => include_image!("../static/species/Pheasant_frame.png"),
+        Species::EuropeanBison => include_image!("../static/species/Bison_frame.png"),
+        Species::PlainsBison => include_image!("../static/species/Plainsbison_frame.png"),
+        Species::Pronghorn => include_image!("../static/species/Pronghorn_frame.png"),
+        Species::Puma => include_image!("../static/species/Puma_frame.png"),
+        Species::BobwhiteQuail => include_image!("../static/species/Quail_frame.png"),
+        Species::CommonRaccoon => include_image!("../static/species/Raccoon_frame.png"),
+        Species::RaccoonDog => include_image!("../static/species/RaccoonDog_frame.png"),
+        Species::RedDeer => include_image!("../static/species/Reddeer_frame.png"),
+        Species::RedFox => include_image!("../static/species/Redfox_frame.png"),
+        Species::Reindeer => include_image!("../static/species/Reindeer_frame.png"),
+        Species::RoeDeer => include_image!("../static/species/Roedeer_frame.png"),
+        Species::RondaIbex => include_image!("../static/species/Rondaibex_frame.png"),
+        Species::RooseveltElk | Species::RockymountainElk => include_image!("../static/species/Rooseveltelk_frame.png"),
+        Species::Sambar => include_image!("../static/species/Sambar_frame.png"),
+        Species::ScrubHare => include_image!("../static/species/Scrubhare_frame.png"),
+        Species::SideStripedJackal => include_image!("../static/species/Sidestripedjackal_frame.png"),
+        Species::SikaDeer => include_image!("../static/species/Sikadeer_frame.png"),
+        Species::SoutheasternSpanishIbex => include_image!("../static/species/Southeasternibex_frame.png"),
+        Species::Springbok => include_image!("../static/species/Springbok_frame.png"),
+        Species::StubbedQuail => include_image!("../static/species/StubbleQuail_frame.png"),
+        Species::TuftedDuck => include_image!("../static/species/TuftedDuck_frame.png"),
+        Species::TundraBeanGoose => include_image!("../static/species/TundraBeanGoose_frame.png"),
+        Species::MerriamTurkey | Species::RioGrandeTurkey | Species::EasternWildTurkey => include_image!("../static/species/Turkey_frame.png"),
+        Species::GreenWingedTeal => include_image!("../static/species/Cinnamonteal_frame.png"),
+        Species::Warthog => include_image!("../static/species/Warthog_frame.png"),
+        Species::WaterBuffalo => include_image!("../static/species/Waterbuffalo_frame.png"),
+        Species::WesternCapercaillie => include_image!("../static/species/WesternCapercaillie_frame.png"),
+        Species::WhitetailDeer => include_image!("../static/species/Whitetaildeer_frame.png"),
+        Species::WildBoar => include_image!("../static/species/Wildboar_frame.png"),
+        Species::WillowPtarmigan | Species::RockPtarmigan => include_image!("../static/species/WillowPtarmigan_frame.png"),
+        _ => include_image!("../static/species/unknown.png"),
+    }
+}
+
 #[derive(PartialEq, Debug, Clone, Copy, EnumIter, VariantArray, EnumString, Serialize, Deserialize, Hash, Eq)]
 #[strum(serialize_all = "title_case")]
 pub enum Reserve {
@@ -137,6 +227,26 @@ impl fmt::Display for Reserve {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let model =  fmt_model(&self);
         write!(f, "{}", model)
+    }
+}
+
+pub fn reserve_image(reserve: &Reserve) -> ImageSource {
+    match reserve {
+        Reserve::HirschfeldenHuntingReserve => include_image!("../static/reserves/hirschfelden_hunting_reserve.png"),
+        Reserve::LaytonLakeDistrict => include_image!("../static/reserves/layton_lake_district.png"),
+        Reserve::MedvedTaigaNationalPark => include_image!("../static/reserves/medved_taiga_national_park.png"),
+        Reserve::VurhongaSavanna => include_image!("../static/reserves/vurhonga_savanna.png"),
+        Reserve::ParqueFernando => include_image!("../static/reserves/parque_fernando.png"),
+        Reserve::YukonValleyNatureReserve => include_image!("../static/reserves/yukon_valley.png"),
+        Reserve::CuatroColinasGameReserve => include_image!("../static/reserves/cuatro.png"),
+        Reserve::SilverRidgePeaks => include_image!("../static/reserves/silver_ridge.png"),
+        Reserve::TeAwaroaNationalPark => include_image!("../static/reserves/te_awaroa.png"),
+        Reserve::RanchoDelArroyo => include_image!("../static/reserves/rancho.png"),
+        Reserve::MississippiAcresPreserve => include_image!("../static/reserves/mississippi.png"),
+        Reserve::RevontuliCoast => include_image!("../static/reserves/revontuli.png"),
+        Reserve::NewEnglandMountains => include_image!("../static/reserves/newengland.png"),
+        Reserve::EmeraldCoastAustralia => include_image!("../static/reserves/emerald.png"),
+        _ => include_image!("../static/reserves/unknown.png"),
     }
 }
 
@@ -604,7 +714,7 @@ impl Default for Challenge {
             shot_damage: 0,
             shot_distance: 0,
             tracking: 0,
-            kills: 0,
+            kills: 1,
             total_shots: 0,
             weight: 0.0,
             score: 0.0,
