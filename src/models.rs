@@ -685,6 +685,7 @@ pub struct GrindKill {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Challenge {
     pub name: String,
+    pub description: String,
     pub species: Species,
     pub reserve: Reserve,
     pub rating: Rating,
@@ -704,6 +705,7 @@ impl Default for Challenge {
     fn default() -> Self {
         Challenge {
             name: "".to_string(),
+            description: "".to_string(),
             species: Species::Unknown,
             reserve: Reserve::Unknown,
             rating: Rating::Unknown,
@@ -732,3 +734,11 @@ impl Ord for Challenge {
     }
 }
 impl Eq for Challenge {}
+
+#[derive(Debug, Clone)]
+pub struct ChallengeSummary {
+    pub name: String,
+    pub description: String,
+    pub start: String,
+    pub percent: f32,
+}

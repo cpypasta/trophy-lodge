@@ -6,6 +6,7 @@ mod game_monitor;
 mod challenges;
 
 use egui::*;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use eframe::Storage;
 use std::fmt;
@@ -24,7 +25,7 @@ const MEDIUM_FONT: f32 = 16.0;
 fn main() -> Result<(), eframe::Error> {
     let icon_data = eframe::icon_data::from_png_bytes(ICON).expect("Failed to load icon");
     let options = eframe::NativeOptions {
-        viewport: ViewportBuilder::default().with_inner_size([1400.0, 930.0]).with_icon(icon_data),
+        viewport: ViewportBuilder::default().with_inner_size([1250.0, 950.0]).with_icon(icon_data),
         ..Default::default()
     };
     eframe::run_native(
@@ -115,11 +116,6 @@ fn filter_data(trophy_filter: &TrophyFilter, mut data: Vec<Trophy>) -> Vec<Troph
     data
 }
 
-fn summary_metric(ui: &mut Ui, label: &str, value: String) {
-    ui.small(RichText::new(format!("{}:", label)).strong());
-    ui.small(RichText::new(format!("{}", value)));    
-}
-
 fn col_label(ui: &mut Ui, value: String) {
     ui.vertical_centered(|ui| ui.add(Label::new(value).wrap(false)));
 }
@@ -137,7 +133,6 @@ fn default_cols() -> Vec<String> {
         TrophyCols::Weight,
         TrophyCols::ShotDistance,
         TrophyCols::ShotDamage,
-        TrophyCols::Fur,
     ];
     cols.iter().map(|x| x.to_string()).collect()
 }
@@ -235,7 +230,7 @@ fn show_species_summary(ui: &mut Ui, reserve: &Reserve, species: &Species, troph
         .striped(false)
         .spacing([5.0, 5.0])
         .show(ui, |ui| {
-            let padding = 30.0;
+            let padding = 35.0;
             ui.horizontal(|ui| {
                 ui.add_space(padding);
                 ui.small(RichText::new(format!("{}:", "Trophies")).strong());
@@ -270,7 +265,7 @@ enum ChallengeTab {
     Discover,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 enum TrophyTab {
     Lodge,
     Table,
@@ -297,6 +292,7 @@ struct MyApp {
     grind_rx: Receiver<GrindKill>,
     challenge_tab: ChallengeTab,
     challenge: Challenge,
+    challenges: Vec<ChallengeSummary>,
 }
 impl MyApp {
     fn new(
@@ -316,10 +312,16 @@ impl MyApp {
         set_style(ctx);
 
         let mut selected_cols = default_cols();
+        let mut trophy_tab = TrophyTab::Lodge;
         if let Some(storage) = cc.storage {
             if let Some(cols) = storage.get_string("selected_cols") {
                 if let Ok(cols_value) = serde_json::from_str::<Vec<String>>(&cols) {
                     selected_cols = cols_value;
+                }
+            }
+            if let Some(trophy_tab_str) = storage.get_string("trophy_tab") {
+                if let Ok(trophy_tab_value) = serde_json::from_str::<TrophyTab>(&trophy_tab_str) {
+                    trophy_tab = trophy_tab_value;
                 }
             }
         }
@@ -328,7 +330,7 @@ impl MyApp {
             menu: Sidebar::Trophies, 
             user_rx,
             username: String::from("Unknown User"),
-            trophy_tab: TrophyTab::Lodge,
+            trophy_tab,
             trophies,
             trophy_reserve: Reserve::All,
             filtered_trophies,
@@ -345,6 +347,10 @@ impl MyApp {
             grind_rx,
             challenge_tab: ChallengeTab::Create,
             challenge: Challenge::default(),
+            challenges: vec![
+                ChallengeSummary { name: "All Diamonds".to_string(), description: "Kill a diamond of every species".to_string(), start: "2024-02-08T18:18:42.093766100-06:00".to_string(), percent: 0.25 },
+                ChallengeSummary { name: "Silver Killing".to_string(), description: "Kill 10 of every species".to_string(), start: "2024-02-07T18:18:42.093766100-06:00".to_string(), percent: 1.0 }
+            ],
         }
     }
 }
@@ -377,19 +383,7 @@ impl eframe::App for MyApp {
                         });
                     });
                     strip.cell(|ui| { 
-                       ui.with_layout(Layout::top_down(Align::RIGHT), |ui| {
-                            ui.horizontal(|ui| {   
-                                ui.add_space(5.0);
-                                if self.status_msg.contains("Game has been closed") {
-                                    ui.label(RichText::new(&self.status_msg).color(Color32::RED).size(SMALL_FONT));
-                                } else {
-                                    if self.status_msg.contains("Waiting for game") {
-                                        ui.spinner();
-                                    }
-                                    ui.label(RichText::new(&self.status_msg).color(Color32::LIGHT_YELLOW).size(SMALL_FONT));
-                                }
-                            });  
-                        }); 
+                       ui.label(""); 
                     });
                     strip.cell(|ui| {
                         ui.vertical(|ui| {
@@ -402,21 +396,17 @@ impl eframe::App for MyApp {
                                 ui.small(RichText::new(&self.username).color(Color32::DEBUG_COLOR));
                             });
                             ui.add_space(10.0);
-                            ui.horizontal(|ui| {
-                                ui.add_space(80.0);
-                                Grid::new("summary_metrics")
-                                .num_columns(2)
-                                .striped(false)
-                                .spacing([5.0, 5.0])
-                                .show(ui, |ui| {
-                                    summary_metric(ui, "Trophies", self.trophies.len().to_string());
-                                    ui.end_row();
-                                    summary_metric(ui, "Diamonds", self.trophies.iter().filter(|x| x.rating == Rating::Diamond).count().to_string());
-                                    ui.end_row();
-                                    summary_metric(ui, "Great Ones", self.trophies.iter().filter(|x| x.rating == Rating::GreatOne).count().to_string());
-                                    ui.end_row();
-                                });
+                            ui.with_layout(Layout::right_to_left(Align::RIGHT), |ui| {
+                                if self.status_msg.contains("Game has been closed") {
+                                    ui.label(RichText::new(&self.status_msg).color(Color32::RED).size(SMALL_FONT));
+                                } else {
+                                    if self.status_msg.contains("Waiting for game") {
+                                        ui.spinner();
+                                    }
+                                    ui.label(RichText::new(&self.status_msg).color(Color32::LIGHT_YELLOW).size(SMALL_FONT));
+                                }
                             });
+                            ui.add_space(10.0);
                         });
                     });               
                 });
@@ -437,15 +427,24 @@ impl eframe::App for MyApp {
         });
 
         CentralPanel::default().show(ctx, |ui| {                
-            match self.menu {                
+            match self.menu {    
+                // TROPHIES            
                 Sidebar::Trophies => {
                     ui.horizontal(|ui| {
                         ui.selectable_value(&mut self.trophy_tab, TrophyTab::Lodge, "Lodge");
                         ui.add_space(5.0);
                         ui.selectable_value(&mut self.trophy_tab, TrophyTab::Table, "Table");
+                        ui.add_space(200.0);
+                        ui.label(RichText::new("Trophies").strong().small());
+                        ui.small(self.trophies.len().to_string() + ", ");
+                        ui.label(RichText::new("Diamonds").strong().small());
+                        ui.small(self.trophies.iter().filter(|x| x.rating == Rating::Diamond).count().to_string() + ", ");
+                        ui.label(RichText::new("Great Ones").strong().small());
+                        ui.small(self.trophies.iter().filter(|x| x.rating == Rating::GreatOne).count().to_string());
                     });
                     ui.add_space(20.0);
                     match self.trophy_tab {
+                        // LODGE
                         TrophyTab::Lodge => {
                             if self.trophy_reserve == Reserve::All {
                                 ScrollArea::vertical().show(ui, |ui| {
@@ -488,6 +487,7 @@ impl eframe::App for MyApp {
                                         .num_columns(5)
                                         .striped(false)
                                         .spacing([20.0, 20.0])
+                                        .max_col_width(160.0)
                                         .show(ui, |ui| {                                    
                                             for (i, s) in species.iter().enumerate() {
                                                 show_species_summary(ui, &self.trophy_reserve, s, &self.trophies);
@@ -500,6 +500,7 @@ impl eframe::App for MyApp {
                                 }
                             }
                         },
+                        // TABLE
                         TrophyTab::Table => {
                             ui.collapsing("Configure", |ui| {
                                 ui.add_space(10.0);
@@ -588,14 +589,15 @@ impl eframe::App for MyApp {
                                 self.trophies.push(trophy);
                                 self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());                        
                             }
-                            let trophies = TableBuilder::new(ui)
+                            ScrollArea::horizontal().show(ui, |ui| {
+                                let trophies = TableBuilder::new(ui)
                                 .striped(true)
                                 .resizable(true)                        
                                 .sense(Sense::click())
                                 .max_scroll_height(f32::INFINITY)
                                 .columns(Column::auto(), self.selected_cols.len());
-                            trophies
-                                .header(30.0, |mut header| {
+
+                                trophies.header(30.0, |mut header| {
                                     self.selected_cols.sort_by(|a, b| {
                                         let trophy_col_a = TrophyCols::from_str(&a).unwrap();
                                         let trophy_col_b = TrophyCols::from_str(&b).unwrap();
@@ -730,10 +732,13 @@ impl eframe::App for MyApp {
                                         }                                                           
                                     });
                                 });
+                            });
+
                         }
                     }
 
                 },
+                // GRINDS
                 Sidebar::Grinds => {
                     ui.collapsing("Create", |ui| {
                         ui.add_space(10.0);
@@ -778,109 +783,112 @@ impl eframe::App for MyApp {
                         ui.separator();
                     });
                     ui.add_space(20.0);
-                    let grinds = TableBuilder::new(ui)
-                        .striped(true)
-                        .resizable(true)
-                        .sense(Sense::hover())
-                        .max_scroll_height(f32::INFINITY)
-                        .columns(Column::auto(), 7);
-                    grinds.header(30.0, |mut header| {
-                        header.col(|ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.add(Label::new(RichText::new("Name").strong()).wrap(false));
+                    ScrollArea::horizontal().show(ui, |ui| {
+                        let grinds = TableBuilder::new(ui)
+                            .striped(true)
+                            .resizable(true)
+                            .sense(Sense::hover())
+                            .max_scroll_height(f32::INFINITY)
+                            .columns(Column::auto(), 7);
+                        grinds.header(30.0, |mut header| {
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Name").strong()).wrap(false));
+                                });
                             });
-                        });
-                        header.col(|ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.add(Label::new(RichText::new("Species").strong()).wrap(false));
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Species").strong()).wrap(false));
+                                });
+                            }); 
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Reserve").strong()).wrap(false));
+                                });
+                            }); 
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Days").strong()).wrap(false));
+                                });
                             });
-                        }); 
-                        header.col(|ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.add(Label::new(RichText::new("Reserve").strong()).wrap(false));
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Kills").strong()).wrap(false));
+                                });
+                            }); 
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Active").strong()).wrap(false));
+                                });
+                            }); 
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Delete").strong()).wrap(false));
+                                });
                             });
-                        }); 
-                        header.col(|ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.add(Label::new(RichText::new("Days").strong()).wrap(false));
-                            });
-                        });
-                        header.col(|ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.add(Label::new(RichText::new("Kills").strong()).wrap(false));
-                            });
-                        }); 
-                        header.col(|ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.add(Label::new(RichText::new("Active").strong()).wrap(false));
-                            });
-                        }); 
-                        header.col(|ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.add(Label::new(RichText::new("Delete").strong()).wrap(false));
-                            });
-                        });
-                    }).body(|body| {
-                        self.grinds.retain(|x| !x.is_deleted);
+                        }).body(|body| {
+                            self.grinds.retain(|x| !x.is_deleted);
 
-                        if let Ok(grind_kill) = self.grind_rx.try_recv() {
-                            for grind in self.grinds.iter_mut() {
-                                if grind.name == grind_kill.name {
-                                    grind.kills += 1;
+                            if let Ok(grind_kill) = self.grind_rx.try_recv() {
+                                for grind in self.grinds.iter_mut() {
+                                    if grind.name == grind_kill.name {
+                                        grind.kills += 1;
+                                    }
                                 }
-                            }
-                        } 
-                        body.rows(30.0, self.grinds.len(), |mut row| {
-                            let grind = self.grinds.get_mut(row.index()).unwrap();
-                            row.col(|ui| {
-                                col_label(ui, grind.name.clone());
-                            });
-                            row.col(|ui| {
-                                col_label(ui, grind.species.to_string());
-                            });
-                            row.col(|ui| {
-                                col_label(ui, grind.reserve.to_string());
-                            });
-                            row.col(|ui| {
-                                let past = DateTime::parse_from_rfc3339(&grind.start).unwrap();
-                                let now = Local::now();
-                                let duration = now.signed_duration_since(past);
-                                col_label(ui, duration.num_days().to_string());
-                            });
-                            row.col(|ui| {
-                                col_label(ui, grind.kills.to_string());
-                            });
-                            row.col(|ui| {
-                                ui.vertical_centered(|ui| {
-                                    if grind.active {
+                            } 
+                            body.rows(30.0, self.grinds.len(), |mut row| {
+                                let grind = self.grinds.get_mut(row.index()).unwrap();
+                                row.col(|ui| {
+                                    col_label(ui, grind.name.clone());
+                                });
+                                row.col(|ui| {
+                                    col_label(ui, grind.species.to_string());
+                                });
+                                row.col(|ui| {
+                                    col_label(ui, grind.reserve.to_string());
+                                });
+                                row.col(|ui| {
+                                    let past = DateTime::parse_from_rfc3339(&grind.start).unwrap();
+                                    let now = Local::now();
+                                    let duration = now.signed_duration_since(past);
+                                    col_label(ui, duration.num_days().to_string());
+                                });
+                                row.col(|ui| {
+                                    col_label(ui, grind.kills.to_string());
+                                });
+                                row.col(|ui| {
+                                    ui.vertical_centered(|ui| {
+                                        if grind.active {
+                                            ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
+                                            if ui.button("Stop").clicked() {
+                                                println!("Stop grind");
+                                                data::stop_grind(grind.name.clone());
+                                                grind.active = false;                                        
+                                            }
+                                        } else {
+                                            ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::DARK_GREEN;
+                                            if ui.button("Start").clicked() {
+                                                println!("Start grind");
+                                                data::start_grind(grind.name.clone());
+                                                grind.active = true;
+                                            }
+                                        }
+                                    });
+                                });  
+                                row.col(|ui| {
+                                    ui.vertical_centered(|ui| {
                                         ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
-                                        if ui.button("Stop").clicked() {
-                                            println!("Stop grind");
-                                            data::stop_grind(grind.name.clone());
-                                            grind.active = false;                                        
+                                        if ui.button("Delete").clicked() {
+                                            data::remove_grind(grind.name.clone());
+                                            grind.is_deleted = true;
                                         }
-                                    } else {
-                                        ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::DARK_GREEN;
-                                        if ui.button("Start").clicked() {
-                                            println!("Start grind");
-                                            data::start_grind(grind.name.clone());
-                                            grind.active = true;
-                                        }
-                                    }
-                                });
-                            });  
-                            row.col(|ui| {
-                                ui.vertical_centered(|ui| {
-                                    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
-                                    if ui.button("Delete").clicked() {
-                                        data::remove_grind(grind.name.clone());
-                                        grind.is_deleted = true;
-                                    }
-                                });
-                            });                                                         
+                                    });
+                                });                                                         
+                            });
                         });
                     });
                 },
+                // CHALLENGES
                 Sidebar::Challenges => {
                     ui.collapsing("Create & Discover", |ui| {
                         ui.add_space(10.0);
@@ -895,24 +903,28 @@ impl eframe::App for MyApp {
                                 ui.small("(use Unknown or 0 to ignore the field)");
                                 ui.add_space(10.0);
 
-                                Grid::new("create_challenge")
-                                .num_columns(8)
-                                .striped(false)
+                                Grid::new("create_challenge_name")
+                                .num_columns(2)
                                 .spacing([10.0, 10.0])
                                 .show(ui, |ui| {
                                     ui.label("Name");
                                     ui.add(TextEdit::singleline(&mut self.challenge.name).min_size([150.0, 20.0].into()));
                                     ui.end_row();
+                                    ui.label("Description");
+                                    ui.add(TextEdit::singleline(&mut self.challenge.description).min_size([150.0, 20.0].into()));
+                                });
+                                ui.add_space(10.0);
+                                Grid::new("create_challenge")
+                                .num_columns(4)
+                                .striped(false)
+                                .spacing([10.0, 10.0])
+                                .show(ui, |ui| {
                                     create_combo(ui, "Reserve", self.challenge.reserve, Reserve::iter(), |x| {
                                         self.challenge.reserve = x;
                                     });
                                     create_combo(ui, "Gender", self.challenge.gender, Gender::iter(), |x| {
                                         self.challenge.gender = x;
                                     });
-                                    ui.label("Shot Damage (min)");
-                                    ui.add(Slider::new(&mut self.challenge.shot_damage, 0..=100));
-                                    ui.label("Kills").on_hover_text("Number of kills to complete the challenge");
-                                    ui.add(Slider::new(&mut self.challenge.kills, 1..=50));
                                     ui.end_row();
 
                                     let species = get_species(self.challenge.reserve);
@@ -922,32 +934,40 @@ impl eframe::App for MyApp {
                                     create_combo(ui, "Mods", self.challenge.mods, Boolean::iter(), |x| {
                                         self.challenge.mods = x;
                                     });
+                                    ui.end_row();
+
+                                    
+                                    create_combo(ui, "Rating", self.challenge.rating, Rating::iter(), |x| {
+                                        self.challenge.rating = x;
+                                    });
+                                    create_combo(ui, "Public", self.challenge.public, Boolean::iter(), |x| {
+                                        self.challenge.public = x;
+                                    });
+                                    ui.end_row();
+                                });
+                                ui.add_space(10.0);
+                                Grid::new("create_challeng_sliders")
+                                .num_columns(4)
+                                .striped(false)
+                                .spacing([10.0, 10.0])
+                                .show(ui, |ui| {
+                                    ui.label("Shot Damage (min)");
+                                    ui.add(Slider::new(&mut self.challenge.shot_damage, 0..=100));
+                                    ui.label("Kills").on_hover_text("Number of kills to complete the challenge");
+                                    ui.add(Slider::new(&mut self.challenge.kills, 1..=50));
+                                    ui.end_row();
                                     ui.label("Shot Distance (min)");
                                     ui.add(Slider::new(&mut self.challenge.shot_distance, 0..=1000));
                                     ui.label("Weight (min)");
                                     ui.add(Slider::new(&mut self.challenge.weight, 0.0..=2000.0));
                                     ui.end_row();
-
-                                    create_combo(ui, "Weapon", self.challenge.weapon, Weapon::iter(), |x| {
-                                        self.challenge.weapon = x;
-                                    });
-                                    create_combo(ui, "Rating", self.challenge.rating, Rating::iter(), |x| {
-                                        self.challenge.rating = x;
-                                    });
                                     ui.label("Tracking (max)");
                                     ui.add(Slider::new(&mut self.challenge.tracking, 0..=1000));
                                     ui.label("Score (min)");
                                     ui.add(Slider::new(&mut self.challenge.score, 0.0..=1100.0));
                                     ui.end_row();
-
-                                    create_combo(ui, "Public", self.challenge.public, Boolean::iter(), |x| {
-                                        self.challenge.public = x;
-                                    });
-                                    ui.label("");
-                                    ui.label("");
                                     ui.label("Total Shots (max)");
                                     ui.add(Slider::new(&mut self.challenge.total_shots, 0..=10));
-                                    ui.end_row();
                                 });
                                 ui.add_space(10.0);
                                 ui.horizontal(|ui| {
@@ -968,8 +988,77 @@ impl eframe::App for MyApp {
                             ChallengeTab::Discover => {
                                 ui.add_space(10.0);
                                 ui.label("coming soon...");
+                                ui.add_space(20.0);
+                                ui.separator();
                             }
                         }
+                    });
+                    ui.add_space(20.0);
+                    ScrollArea::horizontal().show(ui, |ui| {
+                        let challenges = TableBuilder::new(ui)
+                            .striped(true)
+                            .resizable(true)
+                            .max_scroll_height(f32::INFINITY)
+                            .columns(Column::auto(), 5);  
+                        challenges.header(30.0, |mut header| {
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Challenge").strong()).wrap(false));
+                                });
+                            });
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Description").strong()).wrap(false)); }); 
+                            });
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Days").strong()).wrap(false));
+                                });
+                            });
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Progress").strong()).wrap(false));
+                                });
+                            });
+                            header.col(|ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.add(Label::new(RichText::new("Delete").strong()).wrap(false));
+                                });
+                            });
+                        }).body(|body| {
+                            body.rows(30.0, self.challenges.len(), |mut row| {
+                                let challenge = self.challenges.get_mut(row.index()).unwrap();
+                                row.col(|ui| {
+                                    col_label(ui, challenge.name.clone());
+                                });
+                                row.col(|ui| {
+                                    col_label(ui, challenge.description.clone());
+                                });
+                                row.col(|ui| {
+                                    let past = DateTime::parse_from_rfc3339(&challenge.start).unwrap();
+                                    let now = Local::now();
+                                    let duration = now.signed_duration_since(past);
+                                    col_label(ui, duration.num_days().to_string());
+                                });
+                                row.col(|ui| {
+                                    ui.vertical_centered(|ui| {
+                                        if challenge.percent == 1.0 {
+                                            ui.label(RichText::new("100% 👍").color(Color32::GOLD));
+                                        } else { 
+                                            ui.add(ProgressBar::new(challenge.percent).show_percentage());
+                                        }
+                                    });
+                                })  ;
+                                row.col(|ui| {
+                                    ui.vertical_centered(|ui| {
+                                        ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
+                                        if ui.button("Delete").clicked() {
+                                            println!("delete");
+                                        }
+                                    });
+                                });
+                            });
+                        });
                     });
                 },
             }
@@ -985,6 +1074,9 @@ impl eframe::App for MyApp {
     fn save(&mut self, storage: &mut dyn Storage) {
         if let Ok(value) = serde_json::to_string(&self.selected_cols) {
             storage.set_string("selected_cols", value);
+        }
+        if let Ok(value) = serde_json::to_string(&self.trophy_tab) {
+            storage.set_string("trophy_tab", value);
         }
     }   
 }
