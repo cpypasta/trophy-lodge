@@ -5,6 +5,7 @@ use convert_case::{Case, Casing};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use egui::{ImageSource, include_image};
+use chrono::prelude::*;
 
 fn fmt_model(value: &impl fmt::Debug) -> String {
     format!("{:?}", value).to_case(Case::Title)
@@ -110,6 +111,15 @@ impl fmt::Display for Species {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let model =  fmt_model(&self);
         write!(f, "{}", model)
+    }
+}
+impl Species {
+    pub fn is_real(&self) -> bool {
+        match self {
+            Species::All => false,
+            Species::Unknown => false,
+            _ => true,
+        }
     }
 }
 
@@ -652,7 +662,7 @@ impl Default for Grind {
             species: Species::RedDeer,
             reserve: Reserve::HirschfeldenHuntingReserve,
             active: false,
-            start: chrono::Local::now().to_rfc3339(),
+            start: Local::now().to_rfc3339(),
             kills: 69,
             is_deleted: false,
         }
@@ -686,6 +696,7 @@ pub struct GrindKill {
 pub struct Challenge {
     pub name: String,
     pub description: String,
+    pub start: String,
     pub species: Species,
     pub reserve: Reserve,
     pub rating: Rating,
@@ -697,6 +708,7 @@ pub struct Challenge {
     pub shot_distance: u32,
     pub tracking: u32,
     pub kills: u32,
+    pub kills_remaining: u32,
     pub total_shots: u32,
     pub weight: f32,
     pub score: f32,
@@ -706,6 +718,7 @@ impl Default for Challenge {
         Challenge {
             name: "".to_string(),
             description: "".to_string(),
+            start: "".to_string(),
             species: Species::Unknown,
             reserve: Reserve::Unknown,
             rating: Rating::Unknown,
@@ -717,10 +730,16 @@ impl Default for Challenge {
             shot_distance: 0,
             tracking: 0,
             kills: 1,
+            kills_remaining: 1,
             total_shots: 0,
             weight: 0.0,
             score: 0.0,
         }
+    }
+}
+impl Challenge {
+    pub fn valid(&self) -> bool {
+        self.name != "".to_string() && self.kills > 0
     }
 }
 impl PartialOrd for Challenge {
@@ -735,10 +754,22 @@ impl Ord for Challenge {
 }
 impl Eq for Challenge {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChallengeSummary {
     pub name: String,
     pub description: String,
     pub start: String,
     pub percent: f32,
+    pub is_deleted: bool,
+}
+impl Default for ChallengeSummary {
+    fn default() -> Self {
+        ChallengeSummary {
+            name: "".to_string(),
+            description: "".to_string(),
+            start: "".to_string(),
+            percent: 0.0,
+            is_deleted: false,
+        }
+    }
 }

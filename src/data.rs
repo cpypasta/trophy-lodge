@@ -1,21 +1,27 @@
 use crate::models::*;
+use crate::challenges::*;
 use std::path::Path;
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::sync::mpsc::Sender;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 
 const TROPHIES: &str = "./data/trophies.csv";
 pub const GRINDS: &str = "./data/grinds.csv";
+const CHALLENGES: &str = "./data/challenges";
 
 pub fn init() {
     let trophy_path = Path::new(TROPHIES).parent().unwrap();
     let grind_path = Path::new(GRINDS).parent().unwrap();
+    let challenge_path = Path::new(CHALLENGES);
     if !trophy_path.exists() {
         std::fs::create_dir_all(trophy_path).unwrap();
     }
     if !grind_path.exists() {
         std::fs::create_dir_all(grind_path).unwrap();
+    }
+    if !challenge_path.exists() {
+        std::fs::create_dir_all(challenge_path).unwrap();
     }
 }
 
@@ -155,4 +161,32 @@ fn add_kill(name: &String) {
         new_grinds.push(g);
     }
     create_csv(GRINDS, new_grinds);
+}
+
+pub fn get_challenges() -> Vec<ChallengeSummary> {
+    let mut challenge_summaries = Vec::new();
+    for entry in fs::read_dir(CHALLENGES).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        let file = path.to_str().unwrap();
+        let challenges = read_csv::<Challenge>(file);
+        challenge_summaries.push(into_summary(&challenges));
+    }
+    challenge_summaries
+}
+
+pub fn challenge_exists(challenge: &Challenge) -> bool {
+    let filename = Path::new(&CHALLENGES.to_string()).join(&create_challenge_filename(challenge));
+    Path::new(filename.to_str().unwrap()).exists()
+}
+
+pub fn save_challenge(challenge: &Challenge) {
+    let challenges = process_challenge(challenge);
+    let filename = Path::new(&CHALLENGES.to_string()).join(&create_challenge_filename(challenge));
+    create_csv(filename.to_str().unwrap(), challenges);
+}
+
+pub fn delete_challenge(name: &String) {
+    let filename = Path::new(&CHALLENGES.to_string()).join(convert_challenge_name(name));
+    fs::remove_file(filename).unwrap_or_default();
 }

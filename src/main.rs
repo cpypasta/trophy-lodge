@@ -5,6 +5,7 @@ mod data;
 mod game_monitor;
 mod challenges;
 
+use data::delete_challenge;
 use egui::*;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -152,7 +153,7 @@ fn show_reserve_summary<F: FnMut(Reserve)>(ui: &mut Ui, reserve: &Reserve, troph
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
             ui.add_space(20.0);
-            let image = Image::new(reserve_image(&reserve)).fit_to_original_size(1.0);
+            let image = Image::new(reserve_image(&reserve)).fit_to_original_size(1.0).tint(Color32::from_white_alpha(180));
             let reserve_btn = ImageButton::new(image);
             if ui.add(reserve_btn).clicked() {
                 capture(reserve.clone());
@@ -347,10 +348,7 @@ impl MyApp {
             grind_rx,
             challenge_tab: ChallengeTab::Create,
             challenge: Challenge::default(),
-            challenges: vec![
-                ChallengeSummary { name: "All Diamonds".to_string(), description: "Kill a diamond of every species".to_string(), start: "2024-02-08T18:18:42.093766100-06:00".to_string(), percent: 0.25 },
-                ChallengeSummary { name: "Silver Killing".to_string(), description: "Kill 10 of every species".to_string(), start: "2024-02-07T18:18:42.093766100-06:00".to_string(), percent: 1.0 }
-            ],
+            challenges: data::get_challenges(),
         }
     }
 }
@@ -430,17 +428,29 @@ impl eframe::App for MyApp {
             match self.menu {    
                 // TROPHIES            
                 Sidebar::Trophies => {
+                    let trophy_cnt;
+                    let diamond_cnt;
+                    let great_one_cnt;
+                    if self.trophy_reserve == Reserve::All {
+                        trophy_cnt = self.trophies.len();
+                        diamond_cnt = self.trophies.iter().filter(|x| x.rating == Rating::Diamond).count();
+                        great_one_cnt = self.trophies.iter().filter(|x| x.rating == Rating::GreatOne).count();
+                    } else {
+                        trophy_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve).count();
+                        diamond_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::Diamond).count();
+                        great_one_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::GreatOne).count();
+                    }
                     ui.horizontal(|ui| {
                         ui.selectable_value(&mut self.trophy_tab, TrophyTab::Lodge, "Lodge");
                         ui.add_space(5.0);
                         ui.selectable_value(&mut self.trophy_tab, TrophyTab::Table, "Table");
                         ui.add_space(200.0);
                         ui.label(RichText::new("Trophies").strong().small());
-                        ui.small(self.trophies.len().to_string() + ", ");
+                        ui.small(trophy_cnt.to_string() + ", ");
                         ui.label(RichText::new("Diamonds").strong().small());
-                        ui.small(self.trophies.iter().filter(|x| x.rating == Rating::Diamond).count().to_string() + ", ");
+                        ui.small(diamond_cnt.to_string() + ", ");
                         ui.label(RichText::new("Great Ones").strong().small());
-                        ui.small(self.trophies.iter().filter(|x| x.rating == Rating::GreatOne).count().to_string());
+                        ui.small(great_one_cnt.to_string());
                     });
                     ui.add_space(20.0);
                     match self.trophy_tab {
@@ -978,8 +988,13 @@ impl eframe::App for MyApp {
                                     ui.add_space(10.0);
                                     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::DARK_GREEN;
                                     if ui.button("Start Challenge").clicked() {
-                                        let challenges = challenges::process_challenge(&self.challenge);
-                                        println!("{:?}", challenges);
+                                        if self.challenge.valid() && !data::challenge_exists(&self.challenge) {
+                                            self.challenge.kills_remaining = self.challenge.kills;
+                                            self.challenge.start = Local::now().to_rfc3339();
+                                            data::save_challenge(&self.challenge);
+                                            self.challenge = Challenge::default();
+                                            self.challenges = data::get_challenges();
+                                        }
                                     }
                                 });
                                 ui.add_space(20.0);
@@ -1026,6 +1041,7 @@ impl eframe::App for MyApp {
                                 });
                             });
                         }).body(|body| {
+                            self.challenges.retain(|x| !x.is_deleted);
                             body.rows(30.0, self.challenges.len(), |mut row| {
                                 let challenge = self.challenges.get_mut(row.index()).unwrap();
                                 row.col(|ui| {
@@ -1053,7 +1069,8 @@ impl eframe::App for MyApp {
                                     ui.vertical_centered(|ui| {
                                         ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
                                         if ui.button("Delete").clicked() {
-                                            println!("delete");
+                                            delete_challenge(&challenge.name);
+                                            challenge.is_deleted = true;
                                         }
                                     });
                                 });
