@@ -54,6 +54,7 @@ fn set_style(ctx: &Context) {
         (TextStyle::Body, FontId::new(20.0, FontFamily::Proportional)),
         (TextStyle::Button, FontId::new(20.0, FontFamily::Proportional)),
         (TextStyle::Small, FontId::new(MEDIUM_FONT, FontFamily::Proportional)),
+        (TextStyle::Monospace, FontId::new(SMALL_FONT, FontFamily::Monospace)),
     ].into();
     ctx.set_style(style);
 }
@@ -428,325 +429,335 @@ impl eframe::App for MyApp {
             match self.menu {    
                 // TROPHIES            
                 Sidebar::Trophies => {
-                    let trophy_cnt;
-                    let diamond_cnt;
-                    let great_one_cnt;
-                    if self.trophy_reserve == Reserve::All {
-                        trophy_cnt = self.trophies.len();
-                        diamond_cnt = self.trophies.iter().filter(|x| x.rating == Rating::Diamond).count();
-                        great_one_cnt = self.trophies.iter().filter(|x| x.rating == Rating::GreatOne).count();
-                    } else {
-                        trophy_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve).count();
-                        diamond_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::Diamond).count();
-                        great_one_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::GreatOne).count();
-                    }
-                    ui.horizontal(|ui| {
-                        ui.selectable_value(&mut self.trophy_tab, TrophyTab::Lodge, "Lodge");
-                        ui.add_space(5.0);
-                        ui.selectable_value(&mut self.trophy_tab, TrophyTab::Table, "Table");
-                        ui.add_space(200.0);
-                        ui.label(RichText::new("Trophies").strong().small());
-                        ui.small(trophy_cnt.to_string() + ", ");
-                        ui.label(RichText::new("Diamonds").strong().small());
-                        ui.small(diamond_cnt.to_string() + ", ");
-                        ui.label(RichText::new("Great Ones").strong().small());
-                        ui.small(great_one_cnt.to_string());
-                    });
-                    ui.add_space(20.0);
-                    match self.trophy_tab {
-                        // LODGE
-                        TrophyTab::Lodge => {
-                            if self.trophy_reserve == Reserve::All {
-                                ScrollArea::vertical().show(ui, |ui| {
-                                    Grid::new("lodge_reserves")
-                                    .num_columns(5)
-                                    .striped(false)
-                                    .spacing([20.0, 20.0])
-                                    .show(ui, |ui| {
-                                        let org_hover_weak_bg_fill = ui.style().visuals.widgets.hovered.weak_bg_fill;
-                                        let org_inactive_weak_bg_fill = ui.style().visuals.widgets.inactive.weak_bg_fill;
-                                        ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
-                                        ui.style_mut().visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                    StripBuilder::new(ui)
+                    .size(Size::exact(50.0))
+                    .size(Size::remainder())
+                    .vertical(|mut strip| {
+                        strip.cell(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.selectable_value(&mut self.trophy_tab, TrophyTab::Lodge, "Lodge");
+                                ui.add_space(5.0);
+                                ui.selectable_value(&mut self.trophy_tab, TrophyTab::Table, "Table");
+                                ui.add_space(20.0);
 
-                                        let reserves = Reserve::iter().filter(|x| *x != Reserve::Unknown && *x != Reserve::All);
-                                        for (i, r) in reserves.enumerate() {
-                                            show_reserve_summary(ui, &r, &self.trophies, |x| {
-                                                self.trophy_reserve = x;
-                                            });
-                                            if (i+1) % 5 == 0 {
-                                                ui.end_row();
-                                            }
-                                        }
-                                        ui.style_mut().visuals.widgets.hovered.weak_bg_fill = org_hover_weak_bg_fill;
-                                        ui.style_mut().visuals.widgets.inactive.weak_bg_fill = org_inactive_weak_bg_fill;
-                                    });
-                                });
-                            } else {
-                                ui.horizontal(|ui| {                                    
-                                    ui.heading(self.trophy_reserve.to_string());
-                                    ui.add_space(10.0);
-                                    if ui.button("Back").clicked() {
-                                        self.trophy_reserve = Reserve::All;
-                                    }
-                                });
-                                if self.trophy_reserve != Reserve::All {
-                                    ui.add_space(20.0);
-                                    let species = reserve_species().get(&self.trophy_reserve).unwrap().clone();
-                                    ScrollArea::vertical().show(ui, |ui| {
-                                        Grid::new("lodge_reserve_species")
-                                        .num_columns(5)
-                                        .striped(false)
-                                        .spacing([20.0, 20.0])
-                                        .max_col_width(160.0)
-                                        .show(ui, |ui| {                                    
-                                            for (i, s) in species.iter().enumerate() {
-                                                show_species_summary(ui, &self.trophy_reserve, s, &self.trophies);
-                                                if (i+1) % 5 == 0 {
-                                                    ui.end_row();
-                                                }
-                                            }
-                                        });
-                                    });
-                                }
-                            }
-                        },
-                        // TABLE
-                        TrophyTab::Table => {
-                            ui.collapsing("Configure", |ui| {
-                                ui.add_space(10.0);
-                                ui.strong("Filter & Sort");
-                                ui.add_space(10.0);
-                                Grid::new("filter_sort")
-                                    .num_columns(7)
-                                    .striped(false)
-                                    .spacing([30.0, 10.0])
-                                    .show(ui, |ui| {
-                                        create_combo(ui, "Reserve", self.trophy_filter.reserve, Reserve::iter(), |x| {
-                                            self.trophy_filter.reserve = x;
-                                            self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
-                                        });
-                                        create_combo(ui, "Rating", self.trophy_filter.rating, Rating::iter(), |x| {
-                                            self.trophy_filter.rating = x;
-                                            self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
-                                        });
-                                        ui.label("Grind");
-                                        ComboBox::new("grind_filter", "")
-                                        .selected_text(&self.trophy_filter.grind)
-                                        .show_ui(ui, |ui| {
-                                            ui.set_min_width(200.0);
-                                            for g in self.grinds.iter() {
-                                                let combo = ui.selectable_value(&mut self.trophy_filter.grind, g.name.clone(), g.name.clone());
-                                                if combo.clicked() {
-                                                    self.trophy_filter.grind = g.name.clone();
-                                                    self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
-                                                }
-                                            }
-                                        });                                                              
-                                        ui.vertical(|ui| {
-                                            ui.add_space(5.0);
-                                            ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
-                                            if ui.button("Reset").clicked() {
-                                                self.trophy_filter = TrophyFilter::default();
-                                                self.filtered_trophies = self.trophies.clone();
-                                            }   
-                                        });                            
-                                        ui.end_row(); 
-                                        let species = get_species(self.trophy_filter.reserve);
-                                        create_combo(ui, "Species", self.trophy_filter.species, species.into_iter(), |x| { 
-                                            self.trophy_filter.species = x;
-                                            self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());                                                                        
-                                        });
-                                        create_combo(ui, "Gender", self.trophy_filter.gender, Gender::iter(), |x| {
-                                            self.trophy_filter.gender = x;
-                                            self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
-                                        });                                
-                                        create_combo(ui, "Sort By", self.trophy_filter.sort_by, SortBy::iter(), |x| {
-                                            self.trophy_filter.sort_by = x;
-                                            self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
-                                        });                                  
-                                        ui.end_row();  
+                                let trophy_cnt;
+                                let diamond_cnt;
+                                let great_one_cnt;
+                                if self.trophy_reserve == Reserve::All {
+                                    trophy_cnt = self.trophies.len();
+                                    diamond_cnt = self.trophies.iter().filter(|x| x.rating == Rating::Diamond).count();
+                                    great_one_cnt = self.trophies.iter().filter(|x| x.rating == Rating::GreatOne).count();
+                                } else {
+                                    trophy_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve).count();
+                                    diamond_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::Diamond).count();
+                                    great_one_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::GreatOne).count();
+                                }  
+                                ui.label(RichText::new("[").monospace());                              
+                                ui.label(RichText::new("Trophies:").strong().monospace());
+                                ui.monospace(trophy_cnt.to_string() + ", ");
+                                ui.label(RichText::new("Diamonds:").strong().monospace());
+                                ui.monospace(diamond_cnt.to_string() + ", ");
+                                ui.label(RichText::new("Great Ones:").strong().monospace());
+                                ui.monospace(great_one_cnt.to_string());                                
+                                ui.label(RichText::new("]").monospace());                              
+                            });
+                        });
+                        strip.cell(|ui| {
+                            match self.trophy_tab {
+                                // LODGE
+                                TrophyTab::Lodge => {
+                                    if self.trophy_reserve == Reserve::All {
+                                        ScrollArea::vertical().show(ui, |ui| {
+                                            Grid::new("lodge_reserves")
+                                            .num_columns(5)
+                                            .striped(false)
+                                            .spacing([20.0, 20.0])
+                                            .show(ui, |ui| {
+                                                let org_hover_weak_bg_fill = ui.style().visuals.widgets.hovered.weak_bg_fill;
+                                                let org_inactive_weak_bg_fill = ui.style().visuals.widgets.inactive.weak_bg_fill;
+                                                ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
+                                                ui.style_mut().visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
         
-                                    });
-                                ui.add_space(10.0);
-                                ui.strong("Columns");
-                                ui.add_space(10.0);
-                                Grid::new("viewed_cols")
-                                .num_columns(3)
-                                .striped(false)
-                                .spacing([10.0, 10.0])
-                                .show(ui, |ui| {
-                                    for (i, col) in self.trophy_cols.iter().enumerate() {
-                                        let mut value = self.selected_cols.contains(col);
-                                        if ui.checkbox(&mut value, col).changed() {
-                                            if value {
-                                                self.selected_cols.push(col.clone());
-                                            } else {
-                                                self.selected_cols.retain(|x| x != col);
-                                            }
-                                        }
-                                        if i % 3 == 2 {
-                                            ui.end_row();
-                                        }
-                                    }           
-                                });
-                                ui.add_space(20.0);             
-                                ui.separator();
-                            });               
-        
-                            ui.add_space(20.0);
-        
-                            if let Ok(trophy) = self.trophy_rx.try_recv() {
-                                self.trophies.push(trophy);
-                                self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());                        
-                            }
-                            ScrollArea::horizontal().show(ui, |ui| {
-                                let trophies = TableBuilder::new(ui)
-                                .striped(true)
-                                .resizable(true)                        
-                                .sense(Sense::click())
-                                .max_scroll_height(f32::INFINITY)
-                                .columns(Column::auto(), self.selected_cols.len());
-
-                                trophies.header(30.0, |mut header| {
-                                    self.selected_cols.sort_by(|a, b| {
-                                        let trophy_col_a = TrophyCols::from_str(&a).unwrap();
-                                        let trophy_col_b = TrophyCols::from_str(&b).unwrap();
-                                        trophy_col_a.cmp(&trophy_col_b)
-                                    });
-                                    for h in self.selected_cols.iter() {
-                                        header.col(|ui| { 
-                                            ui.vertical_centered(|ui| {
-                                                ui.add(Label::new(RichText::new(h).strong()).wrap(false));
-                                            }); 
-                                        });
-                                    }
-                                })
-                                .body(|body| {
-                                    body.rows(30.0, self.filtered_trophies.len(), |mut row| {    
-                                        let trophy = self.filtered_trophies.get(row.index()).unwrap();
-                                        let row_index = row.index().clone();
-                                        if self.selected_cols.contains(&"Species".to_string()) {
-                                            row.col(|ui| { 
-                                                col_label(ui, trophy.species.to_string());
-                                            });
-                                        }
-                                        if self.selected_cols.contains(&"Reserve".to_string()) {
-                                            row.col(|ui| { 
-                                                col_label(ui, trophy.reserve.to_string());
-                                            });
-                                        }
-                                        if self.selected_cols.contains(&"Rating".to_string()) {
-                                            row.col(|ui| { 
-                                                col_label(ui, trophy.rating.to_string());
-                                            });
-                                        }
-                                        if self.selected_cols.contains(&"Score".to_string()) {
-                                            row.col(|ui| { 
-                                                let score = format!("{:.2}", trophy.score);
-                                                col_label(ui, score);
-                                            });
-                                        }
-                                        if self.selected_cols.contains(&"Weight".to_string()) {
-                                            row.col(|ui| { 
-                                                let weight = format!("{:.2}", trophy.weight);
-                                                col_label(ui, weight);
-                                            });        
-                                        }    
-                                        if self.selected_cols.contains(&"Fur".to_string()) {
-                                            row.col(|ui| { 
-                                                col_label(ui, trophy.fur.to_string());
-                                            });        
-                                        }                 
-                                        if self.selected_cols.contains(&"Gender".to_string()) {
-                                            row.col(|ui| { 
-                                                col_label(ui, trophy.gender.to_string());
-                                            });        
-                                        }                                                             
-                                        if self.selected_cols.contains(&"Date".to_string()) {
-                                            row.col(|ui| { 
-                                                col_label(ui, trophy.date.to_string());
-                                            });        
-                                        }
-                                        if self.selected_cols.contains(&"Cash".to_string()) {
-                                            row.col(|ui| { 
-                                                col_label(ui, trophy.cash.to_string());
-                                            });        
-                                        }         
-                                        if self.selected_cols.contains(&"Xp".to_string()) {
-                                            row.col(|ui| { 
-                                                col_label(ui, trophy.xp.to_string());
-                                            });        
-                                        }   
-                                        if self.selected_cols.contains(&"Session Score".to_string()) {
-                                            row.col(|ui| { 
-                                                col_label(ui, trophy.session_score.to_string());
-                                            });        
-                                        }                                         
-                                        if self.selected_cols.contains(&"Integrity".to_string()) {
-                                            row.col(|ui| { 
-                                                col_label(ui, trophy.integrity.to_string());
-                                            });        
-                                        }                                           
-                                        if self.selected_cols.contains(&"Tracking".to_string()) {
-                                            row.col(|ui| { 
-                                                let tracking = format!("{:.2}", trophy.tracking);
-                                                col_label(ui, tracking);
-                                            });        
-                                        }  
-                                        if self.selected_cols.contains(&"Weapon Score".to_string()) {
-                                            row.col(|ui| { 
-                                                let weapon_score = format!("{:.2}", trophy.weapon_score);
-                                                col_label(ui, weapon_score);
-                                            });        
-                                        }                                                
-                                        if self.selected_cols.contains(&"Shot Distance".to_string()) {
-                                            row.col(|ui| { 
-                                                let shot_distance = format!("{:.2}", trophy.shot_distance);
-                                                col_label(ui, shot_distance);
-                                            });        
-                                        }                                        
-                                        if self.selected_cols.contains(&"Shot Damage".to_string()) {
-                                            row.col(|ui| { 
-                                                let shot_damage = format!("{:.0}%", trophy.shot_damage);
-                                                col_label(ui, shot_damage);
-                                            });        
-                                        }                                         
-                                        if self.selected_cols.contains(&"Mods".to_string()) {
-                                            row.col(|ui| { 
-                                                col_label(ui, trophy.mods.to_string());
-                                            });        
-                                        }          
-                                        if self.selected_cols.contains(&"Grind".to_string()) {
-                                            row.col(|ui| { 
-                                                if let Some(grinds) = &trophy.grind {
-                                                    let grind_split: Vec<String> = grinds.split("/").map(|x| x.to_string()).collect();
-                                                    if grind_split.len() > 1 {
-                                                        ui.vertical_centered(|ui| {
-                                                            ui.horizontal(|ui| {
-                                                                ui.add_space(8.0);
-                                                                ComboBox::new(format!("{}_grind_display", row_index), "")
-                                                                .selected_text(grind_split[0].clone())
-                                                                .show_ui(ui, |ui| {
-                                                                    ui.set_min_width(200.0);
-                                                                    for g in grind_split {
-                                                                        let _ = ui.selectable_label(false, g.clone());
-                                                                    }
-                                                                }); 
-                                                            });
-                                                        });                                                   
-                                                    } else {
-                                                        col_label(ui, grinds.clone());
+                                                let reserves = Reserve::iter().filter(|x| *x != Reserve::Unknown && *x != Reserve::All);
+                                                for (i, r) in reserves.enumerate() {
+                                                    show_reserve_summary(ui, &r, &self.trophies, |x| {
+                                                        self.trophy_reserve = x;
+                                                    });
+                                                    if (i+1) % 5 == 0 {
+                                                        ui.end_row();
                                                     }
                                                 }
-                                            });        
-                                        }                                                           
+                                                ui.style_mut().visuals.widgets.hovered.weak_bg_fill = org_hover_weak_bg_fill;
+                                                ui.style_mut().visuals.widgets.inactive.weak_bg_fill = org_inactive_weak_bg_fill;
+                                            });
+                                        });
+                                    } else {
+                                        ui.horizontal(|ui| {                                    
+                                            ui.heading(self.trophy_reserve.to_string());
+                                            ui.add_space(10.0);
+                                            if ui.button("Back").clicked() {
+                                                self.trophy_reserve = Reserve::All;
+                                            }
+                                        });
+                                        if self.trophy_reserve != Reserve::All {
+                                            ui.add_space(20.0);
+                                            let species = reserve_species().get(&self.trophy_reserve).unwrap().clone();
+                                            ScrollArea::vertical().show(ui, |ui| {
+                                                Grid::new("lodge_reserve_species")
+                                                .num_columns(5)
+                                                .striped(false)
+                                                .spacing([20.0, 20.0])
+                                                .max_col_width(160.0)
+                                                .show(ui, |ui| {                                    
+                                                    for (i, s) in species.iter().enumerate() {
+                                                        show_species_summary(ui, &self.trophy_reserve, s, &self.trophies);
+                                                        if (i+1) % 5 == 0 {
+                                                            ui.end_row();
+                                                        }
+                                                    }
+                                                });
+                                            });
+                                        }
+                                    }
+                                },
+                                // TABLE
+                                TrophyTab::Table => {
+                                    ui.collapsing("Configure", |ui| {
+                                        ui.add_space(10.0);
+                                        ui.strong("Filter & Sort");
+                                        ui.add_space(10.0);
+                                        Grid::new("filter_sort")
+                                            .num_columns(7)
+                                            .striped(false)
+                                            .spacing([30.0, 10.0])
+                                            .show(ui, |ui| {
+                                                create_combo(ui, "Reserve", self.trophy_filter.reserve, Reserve::iter(), |x| {
+                                                    self.trophy_filter.reserve = x;
+                                                    self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
+                                                });
+                                                create_combo(ui, "Rating", self.trophy_filter.rating, Rating::iter(), |x| {
+                                                    self.trophy_filter.rating = x;
+                                                    self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
+                                                });
+                                                ui.label("Grind");
+                                                ComboBox::new("grind_filter", "")
+                                                .selected_text(&self.trophy_filter.grind)
+                                                .show_ui(ui, |ui| {
+                                                    ui.set_min_width(200.0);
+                                                    for g in self.grinds.iter() {
+                                                        let combo = ui.selectable_value(&mut self.trophy_filter.grind, g.name.clone(), g.name.clone());
+                                                        if combo.clicked() {
+                                                            self.trophy_filter.grind = g.name.clone();
+                                                            self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
+                                                        }
+                                                    }
+                                                });                                                              
+                                                ui.vertical(|ui| {
+                                                    ui.add_space(5.0);
+                                                    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::BROWN;
+                                                    if ui.button("Reset").clicked() {
+                                                        self.trophy_filter = TrophyFilter::default();
+                                                        self.filtered_trophies = self.trophies.clone();
+                                                    }   
+                                                });                            
+                                                ui.end_row(); 
+                                                let species = get_species(self.trophy_filter.reserve);
+                                                create_combo(ui, "Species", self.trophy_filter.species, species.into_iter(), |x| { 
+                                                    self.trophy_filter.species = x;
+                                                    self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());                                                                        
+                                                });
+                                                create_combo(ui, "Gender", self.trophy_filter.gender, Gender::iter(), |x| {
+                                                    self.trophy_filter.gender = x;
+                                                    self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
+                                                });                                
+                                                create_combo(ui, "Sort By", self.trophy_filter.sort_by, SortBy::iter(), |x| {
+                                                    self.trophy_filter.sort_by = x;
+                                                    self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());
+                                                });                                  
+                                                ui.end_row();  
+                
+                                            });
+                                        ui.add_space(10.0);
+                                        ui.strong("Columns");
+                                        ui.add_space(10.0);
+                                        Grid::new("viewed_cols")
+                                        .num_columns(3)
+                                        .striped(false)
+                                        .spacing([10.0, 10.0])
+                                        .show(ui, |ui| {
+                                            for (i, col) in self.trophy_cols.iter().enumerate() {
+                                                let mut value = self.selected_cols.contains(col);
+                                                if ui.checkbox(&mut value, col).changed() {
+                                                    if value {
+                                                        self.selected_cols.push(col.clone());
+                                                    } else {
+                                                        self.selected_cols.retain(|x| x != col);
+                                                    }
+                                                }
+                                                if i % 3 == 2 {
+                                                    ui.end_row();
+                                                }
+                                            }           
+                                        });
+                                        ui.add_space(20.0);             
+                                        ui.separator();
+                                    });               
+                
+                                    ui.add_space(20.0);
+                
+                                    if let Ok(trophy) = self.trophy_rx.try_recv() {
+                                        self.trophies.push(trophy);
+                                        self.filtered_trophies = filter_data(&self.trophy_filter, self.trophies.clone());                        
+                                    }
+                                    ScrollArea::horizontal().show(ui, |ui| {
+                                        let trophies = TableBuilder::new(ui)
+                                        .striped(true)
+                                        .resizable(true)                        
+                                        .sense(Sense::click())
+                                        .max_scroll_height(f32::INFINITY)
+                                        .columns(Column::auto(), self.selected_cols.len());
+        
+                                        trophies.header(30.0, |mut header| {
+                                            self.selected_cols.sort_by(|a, b| {
+                                                let trophy_col_a = TrophyCols::from_str(&a).unwrap();
+                                                let trophy_col_b = TrophyCols::from_str(&b).unwrap();
+                                                trophy_col_a.cmp(&trophy_col_b)
+                                            });
+                                            for h in self.selected_cols.iter() {
+                                                header.col(|ui| { 
+                                                    ui.vertical_centered(|ui| {
+                                                        ui.add(Label::new(RichText::new(h).strong()).wrap(false));
+                                                    }); 
+                                                });
+                                            }
+                                        })
+                                        .body(|body| {
+                                            body.rows(30.0, self.filtered_trophies.len(), |mut row| {    
+                                                let trophy = self.filtered_trophies.get(row.index()).unwrap();
+                                                let row_index = row.index().clone();
+                                                if self.selected_cols.contains(&"Species".to_string()) {
+                                                    row.col(|ui| { 
+                                                        col_label(ui, trophy.species.to_string());
+                                                    });
+                                                }
+                                                if self.selected_cols.contains(&"Reserve".to_string()) {
+                                                    row.col(|ui| { 
+                                                        col_label(ui, trophy.reserve.to_string());
+                                                    });
+                                                }
+                                                if self.selected_cols.contains(&"Rating".to_string()) {
+                                                    row.col(|ui| { 
+                                                        col_label(ui, trophy.rating.to_string());
+                                                    });
+                                                }
+                                                if self.selected_cols.contains(&"Score".to_string()) {
+                                                    row.col(|ui| { 
+                                                        let score = format!("{:.2}", trophy.score);
+                                                        col_label(ui, score);
+                                                    });
+                                                }
+                                                if self.selected_cols.contains(&"Weight".to_string()) {
+                                                    row.col(|ui| { 
+                                                        let weight = format!("{:.2}", trophy.weight);
+                                                        col_label(ui, weight);
+                                                    });        
+                                                }    
+                                                if self.selected_cols.contains(&"Fur".to_string()) {
+                                                    row.col(|ui| { 
+                                                        col_label(ui, trophy.fur.to_string());
+                                                    });        
+                                                }                 
+                                                if self.selected_cols.contains(&"Gender".to_string()) {
+                                                    row.col(|ui| { 
+                                                        col_label(ui, trophy.gender.to_string());
+                                                    });        
+                                                }                                                             
+                                                if self.selected_cols.contains(&"Date".to_string()) {
+                                                    row.col(|ui| { 
+                                                        col_label(ui, trophy.date.to_string());
+                                                    });        
+                                                }
+                                                if self.selected_cols.contains(&"Cash".to_string()) {
+                                                    row.col(|ui| { 
+                                                        col_label(ui, trophy.cash.to_string());
+                                                    });        
+                                                }         
+                                                if self.selected_cols.contains(&"Xp".to_string()) {
+                                                    row.col(|ui| { 
+                                                        col_label(ui, trophy.xp.to_string());
+                                                    });        
+                                                }   
+                                                if self.selected_cols.contains(&"Session Score".to_string()) {
+                                                    row.col(|ui| { 
+                                                        col_label(ui, trophy.session_score.to_string());
+                                                    });        
+                                                }                                         
+                                                if self.selected_cols.contains(&"Integrity".to_string()) {
+                                                    row.col(|ui| { 
+                                                        col_label(ui, trophy.integrity.to_string());
+                                                    });        
+                                                }                                           
+                                                if self.selected_cols.contains(&"Tracking".to_string()) {
+                                                    row.col(|ui| { 
+                                                        let tracking = format!("{:.2}", trophy.tracking);
+                                                        col_label(ui, tracking);
+                                                    });        
+                                                }  
+                                                if self.selected_cols.contains(&"Weapon Score".to_string()) {
+                                                    row.col(|ui| { 
+                                                        let weapon_score = format!("{:.2}", trophy.weapon_score);
+                                                        col_label(ui, weapon_score);
+                                                    });        
+                                                }                                                
+                                                if self.selected_cols.contains(&"Shot Distance".to_string()) {
+                                                    row.col(|ui| { 
+                                                        let shot_distance = format!("{:.2}", trophy.shot_distance);
+                                                        col_label(ui, shot_distance);
+                                                    });        
+                                                }                                        
+                                                if self.selected_cols.contains(&"Shot Damage".to_string()) {
+                                                    row.col(|ui| { 
+                                                        let shot_damage = format!("{:.0}%", trophy.shot_damage);
+                                                        col_label(ui, shot_damage);
+                                                    });        
+                                                }                                         
+                                                if self.selected_cols.contains(&"Mods".to_string()) {
+                                                    row.col(|ui| { 
+                                                        col_label(ui, trophy.mods.to_string());
+                                                    });        
+                                                }          
+                                                if self.selected_cols.contains(&"Grind".to_string()) {
+                                                    row.col(|ui| { 
+                                                        if let Some(grinds) = &trophy.grind {
+                                                            let grind_split: Vec<String> = grinds.split("/").map(|x| x.to_string()).collect();
+                                                            if grind_split.len() > 1 {
+                                                                ui.vertical_centered(|ui| {
+                                                                    ui.horizontal(|ui| {
+                                                                        ui.add_space(8.0);
+                                                                        ComboBox::new(format!("{}_grind_display", row_index), "")
+                                                                        .selected_text(grind_split[0].clone())
+                                                                        .show_ui(ui, |ui| {
+                                                                            ui.set_min_width(200.0);
+                                                                            for g in grind_split {
+                                                                                let _ = ui.selectable_label(false, g.clone());
+                                                                            }
+                                                                        }); 
+                                                                    });
+                                                                });                                                   
+                                                            } else {
+                                                                col_label(ui, grinds.clone());
+                                                            }
+                                                        }
+                                                    });        
+                                                }                                                           
+                                            });
+                                        });
                                     });
-                                });
-                            });
-
-                        }
-                    }
-
+        
+                                }
+                            }
+                        });
+                    });
                 },
                 // GRINDS
                 Sidebar::Grinds => {
