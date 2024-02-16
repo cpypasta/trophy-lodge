@@ -537,6 +537,14 @@ impl std::convert::From<bool> for Boolean {
         }
     }
 }
+impl std::convert::Into<bool> for Boolean {
+    fn into(self) -> bool {
+        match self {
+            Boolean::True => true,
+            Boolean::False => false,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Trophy {
@@ -741,6 +749,44 @@ impl Challenge {
     pub fn valid(&self) -> bool {
         self.name != "".to_string() && self.kills > 0
     }
+
+    pub fn for_trophy(&self, trophy: &Trophy) -> bool {
+        let mut matches = Vec::new();
+        if self.species != Species::Unknown {
+            matches.push(self.species == trophy.species);
+        }
+        if self.reserve != Reserve::Unknown {
+            matches.push(self.reserve == trophy.reserve);
+        }
+        if self.rating != Rating::Unknown {
+            matches.push(self.rating == trophy.rating);
+        }
+        if self.gender != Gender::Unknown {
+            matches.push(self.gender == trophy.gender);
+        }
+        if self.shot_damage > 0 {
+            matches.push(self.shot_damage >= trophy.shot_damage as u32);
+        }
+        if self.shot_distance > 0 {
+            matches.push(self.shot_distance >= trophy.shot_distance as u32);
+        }
+        if self.tracking > 0 {
+            matches.push(self.tracking <= trophy.tracking as u32);
+        }
+        if self.score > 0.0 {
+            matches.push(self.score >= trophy.score);
+        }
+        if self.weight > 0.0 {
+            matches.push(self.weight >= trophy.weight);
+        }
+        if self.mods == Boolean::False {
+            matches.push(trophy.mods == Boolean::False);
+        }
+
+        println!("{:?}", matches);
+
+        matches.iter().all(|&x| x)
+    }
 }
 impl PartialOrd for Challenge {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -772,4 +818,8 @@ impl Default for ChallengeSummary {
             is_deleted: false,
         }
     }
+}
+
+pub struct ChallengeKill {
+    pub name: String,
 }

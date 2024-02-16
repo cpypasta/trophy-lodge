@@ -95,12 +95,16 @@ pub fn trophy_exists(trophy: &Trophy) -> bool {
     false
 }
 
-pub fn save_trophy(trophy: &Trophy, grind_tx: &Sender<GrindKill>) {
+pub fn save_trophy(trophy: &Trophy, grind_tx: &Sender<GrindKill>, challenge_tx: &Sender<ChallengeKill>) {
     append_csv(TROPHIES, vec![trophy]);
     let grinds = grinds_to_add(&trophy.species, &trophy.reserve);
     for g in grinds {
         add_kill(&g);
         grind_tx.send(GrindKill { name: g.clone() }).unwrap();
+    }
+    let challenge_kills = update_challenges(&trophy);
+    if challenge_kills.len() > 0 {
+        challenge_tx.send(ChallengeKill { name: challenge_kills[0].clone() }).unwrap();
     }
 }
 
@@ -189,4 +193,32 @@ pub fn save_challenge(challenge: &Challenge) {
 pub fn delete_challenge(name: &String) {
     let filename = Path::new(&CHALLENGES.to_string()).join(convert_challenge_name(name));
     fs::remove_file(filename).unwrap_or_default();
+}
+
+fn update_challenges(trophy: &Trophy) -> Vec<String> {
+    let challenges = get_challenges();
+    let mut update_happened = Vec::new();
+    for c in challenges {
+        let challenge_name = convert_challenge_name(&c.name);
+        if challenge_name != "layton_tour.csv" {
+            continue;
+        }
+        let filename = Path::new(&CHALLENGES.to_string()).join(&challenge_name);
+        let mut challenge_kills = read_csv::<Challenge>(filename.to_str().unwrap());
+        let mut updated = false;
+        for challenge in challenge_kills.iter_mut() {
+            if challenge.for_trophy(trophy) {
+                if challenge.kills_remaining > 0 {
+                    challenge.kills_remaining -= 1;
+                    updated = true;
+                }
+            }
+        } 
+        if updated {
+            println!("Updating challenge");
+            create_csv(filename.to_str().unwrap(), challenge_kills);
+            update_happened.push(c.name.clone()); 
+        }       
+    }
+    update_happened
 }

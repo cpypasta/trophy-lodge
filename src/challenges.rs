@@ -84,7 +84,7 @@ pub fn into_summary(challenges: &Vec<Challenge>) -> ChallengeSummary {
         percent: kills_completed  as f32 / total_kills as f32,
         is_deleted: false,
     }
-}
+} 
 
 pub fn convert_challenge_name(name: &String) -> String {
     name.clone().replace(|c: char| !c.is_alphanumeric(), "_").to_lowercase() + ".csv"

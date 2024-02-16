@@ -37,12 +37,13 @@ fn main() -> Result<(), eframe::Error> {
             let (user_tx, user_rx) = mpsc::channel::<String>();
             let (trophy_tx, trophy_rx) = mpsc::channel::<Trophy>();
             let (grind_tx, grind_rx) = mpsc::channel::<GrindKill>();
+            let (challenge_tx, challenge_rx) = mpsc::channel::<ChallengeKill>();
             thread::spawn(move || {
-                game_monitor::monitor(status_tx, trophy_tx, user_tx, grind_tx);
+                game_monitor::monitor(status_tx, trophy_tx, user_tx, grind_tx, challenge_tx);
             });
 
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Box::new(MyApp::new(cc, status_rx, trophy_rx, user_rx, grind_rx))
+            Box::new(MyApp::new(cc, status_rx, trophy_rx, user_rx, grind_rx, challenge_rx))
         }),
     )
 }
@@ -295,6 +296,7 @@ struct MyApp {
     challenge_tab: ChallengeTab,
     challenge: Challenge,
     challenges: Vec<ChallengeSummary>,
+    challenge_rx: Receiver<ChallengeKill>,
 }
 impl MyApp {
     fn new(
@@ -302,7 +304,8 @@ impl MyApp {
         status_rx: Receiver<String>, 
         trophy_rx: Receiver<Trophy>, 
         user_rx: Receiver<String>, 
-        grind_rx: Receiver<GrindKill>
+        grind_rx: Receiver<GrindKill>,
+        challenge_rx: Receiver<ChallengeKill>,
     ) -> Self {
         data::init();
 
@@ -350,6 +353,7 @@ impl MyApp {
             challenge_tab: ChallengeTab::Create,
             challenge: Challenge::default(),
             challenges: data::get_challenges(),
+            challenge_rx,
         }
     }
 }
@@ -384,28 +388,36 @@ impl eframe::App for MyApp {
                     strip.cell(|ui| { 
                        ui.label(""); 
                     });
-                    strip.cell(|ui| {
-                        ui.vertical(|ui| {
-                            if let Ok(username) = self.user_rx.try_recv() {
-                                if username != "" {
-                                    self.username = username;
-                                }
-                            }
-                            ui.with_layout(Layout::right_to_left(Align::LEFT), |ui| {
-                                ui.small(RichText::new(&self.username).color(Color32::DEBUG_COLOR));
-                            });
-                            ui.add_space(10.0);
-                            ui.with_layout(Layout::right_to_left(Align::RIGHT), |ui| {
-                                if self.status_msg.contains("Game has been closed") {
-                                    ui.label(RichText::new(&self.status_msg).color(Color32::RED).size(SMALL_FONT));
-                                } else {
-                                    if self.status_msg.contains("Waiting for game") {
-                                        ui.spinner();
+                    strip.strip(|builder| {
+                        builder
+                        .size(Size::exact(80.0))
+                        .size(Size::remainder())
+                        .vertical(|mut strip| {
+                            strip.cell(|ui| {
+                                if let Ok(username) = self.user_rx.try_recv() {
+                                    if username != "" {
+                                        self.username = username;
                                     }
-                                    ui.label(RichText::new(&self.status_msg).color(Color32::LIGHT_YELLOW).size(SMALL_FONT));
                                 }
+                                ui.with_layout(Layout::top_down(Align::RIGHT), |ui| {
+                                    ui.monospace(RichText::new(&self.username).color(Color32::DEBUG_COLOR));
+                                });
                             });
-                            ui.add_space(10.0);
+                            strip.cell(|ui| {
+                                ui.with_layout(Layout::top_down(Align::RIGHT), |ui| {
+                                    ui.horizontal(|ui| {                                    
+                                        if self.status_msg.contains("Game has been closed") {
+                                            ui.monospace(RichText::new(&self.status_msg).color(Color32::RED));
+                                        } else {
+                                            if self.status_msg.contains("Waiting for game") {
+                                                ui.spinner();
+                                            }
+                                            ui.monospace(RichText::new(&self.status_msg).color(Color32::LIGHT_YELLOW));
+                                        }
+                                    });
+                                });
+                                ui.add_space(10.0);
+                            });
                         });
                     });               
                 });
@@ -433,33 +445,43 @@ impl eframe::App for MyApp {
                     .size(Size::exact(50.0))
                     .size(Size::remainder())
                     .vertical(|mut strip| {
-                        strip.cell(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.selectable_value(&mut self.trophy_tab, TrophyTab::Lodge, "Lodge");
-                                ui.add_space(5.0);
-                                ui.selectable_value(&mut self.trophy_tab, TrophyTab::Table, "Table");
-                                ui.add_space(20.0);
-
-                                let trophy_cnt;
-                                let diamond_cnt;
-                                let great_one_cnt;
-                                if self.trophy_reserve == Reserve::All {
-                                    trophy_cnt = self.trophies.len();
-                                    diamond_cnt = self.trophies.iter().filter(|x| x.rating == Rating::Diamond).count();
-                                    great_one_cnt = self.trophies.iter().filter(|x| x.rating == Rating::GreatOne).count();
-                                } else {
-                                    trophy_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve).count();
-                                    diamond_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::Diamond).count();
-                                    great_one_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::GreatOne).count();
-                                }  
-                                ui.label(RichText::new("[").monospace());                              
-                                ui.label(RichText::new("Trophies:").strong().monospace());
-                                ui.monospace(trophy_cnt.to_string() + ", ");
-                                ui.label(RichText::new("Diamonds:").strong().monospace());
-                                ui.monospace(diamond_cnt.to_string() + ", ");
-                                ui.label(RichText::new("Great Ones:").strong().monospace());
-                                ui.monospace(great_one_cnt.to_string());                                
-                                ui.label(RichText::new("]").monospace());                              
+                        strip.strip(|builder| {
+                            builder
+                            .size(Size::exact(200.0))
+                            .size(Size::remainder())
+                            .horizontal(|mut strip| {
+                                strip.cell(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.selectable_value(&mut self.trophy_tab, TrophyTab::Lodge, "Lodge");
+                                        ui.add_space(5.0);
+                                        ui.selectable_value(&mut self.trophy_tab, TrophyTab::Table, "Table");
+                                        ui.add_space(20.0);
+                                    });
+                                });
+                                strip.cell(|ui| {
+                                    ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
+                                        let trophy_cnt;
+                                        let diamond_cnt;
+                                        let great_one_cnt;
+                                        if self.trophy_reserve == Reserve::All {
+                                            trophy_cnt = self.trophies.len();
+                                            diamond_cnt = self.trophies.iter().filter(|x| x.rating == Rating::Diamond).count();
+                                            great_one_cnt = self.trophies.iter().filter(|x| x.rating == Rating::GreatOne).count();
+                                        } else {
+                                            trophy_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve).count();
+                                            diamond_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::Diamond).count();
+                                            great_one_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::GreatOne).count();
+                                        }  
+                                        // ui.label(RichText::new("]").monospace());   
+                                        ui.monospace(great_one_cnt.to_string());                                
+                                        ui.label(RichText::new("Great Ones:").strong().monospace());
+                                        ui.monospace(diamond_cnt.to_string() + ", ");
+                                        ui.label(RichText::new("Diamonds:").strong().monospace());
+                                        ui.monospace(trophy_cnt.to_string() + ", ");
+                                        ui.label(RichText::new("Trophies:").strong().monospace());
+                                        // ui.label(RichText::new("[").monospace());                              
+                                    });
+                                });
                             });
                         });
                         strip.cell(|ui| {
@@ -974,8 +996,8 @@ impl eframe::App for MyApp {
                                 .show(ui, |ui| {
                                     ui.label("Shot Damage (min)");
                                     ui.add(Slider::new(&mut self.challenge.shot_damage, 0..=100));
-                                    ui.label("Kills").on_hover_text("Number of kills to complete the challenge");
-                                    ui.add(Slider::new(&mut self.challenge.kills, 1..=50));
+                                    ui.label("Score (min)");
+                                    ui.add(Slider::new(&mut self.challenge.score, 0.0..=1100.0));
                                     ui.end_row();
                                     ui.label("Shot Distance (min)");
                                     ui.add(Slider::new(&mut self.challenge.shot_distance, 0..=1000));
@@ -984,11 +1006,9 @@ impl eframe::App for MyApp {
                                     ui.end_row();
                                     ui.label("Tracking (max)");
                                     ui.add(Slider::new(&mut self.challenge.tracking, 0..=1000));
-                                    ui.label("Score (min)");
-                                    ui.add(Slider::new(&mut self.challenge.score, 0.0..=1100.0));
+                                    ui.label("Kills").on_hover_text("Number of kills to complete the challenge");
+                                    ui.add(Slider::new(&mut self.challenge.kills, 1..=50));
                                     ui.end_row();
-                                    ui.label("Total Shots (max)");
-                                    ui.add(Slider::new(&mut self.challenge.total_shots, 0..=10));
                                 });
                                 ui.add_space(10.0);
                                 ui.horizontal(|ui| {
@@ -1052,7 +1072,12 @@ impl eframe::App for MyApp {
                                 });
                             });
                         }).body(|body| {
+                            if let Ok(_) = self.challenge_rx.try_recv() {
+                                self.challenges = data::get_challenges();
+                            }                             
                             self.challenges.retain(|x| !x.is_deleted);
+
+
                             body.rows(30.0, self.challenges.len(), |mut row| {
                                 let challenge = self.challenges.get_mut(row.index()).unwrap();
                                 row.col(|ui| {

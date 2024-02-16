@@ -220,7 +220,7 @@ fn valid_string(s: &String) -> bool {
     s != "" && s.chars().all(|c| c.is_whitespace() || c.is_ascii_alphabetic())
 }
 
-pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Sender<String>, grind_tx: Sender<GrindKill>) {
+pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Sender<String>, grind_tx: Sender<GrindKill>, challenge_tx: Sender<ChallengeKill>) {
     let mut last_weight = 0f32;
     let game_proc: Process;
     let game_directory: Option<String>;
@@ -233,7 +233,7 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
             game_directory = game.directory;
             base_address = game.base_address;
             harvest_base_address = Pointer::new(base_address).add(&game_proc, 0x023D1EF0).address() + 0x280;
-            status_tx.send(format!("Attached to game: {:X}. Waiting for kill.", base_address)).unwrap();
+            status_tx.send(format!("Attached to game: {:X} {:X}. Waiting for kill.", base_address, harvest_base_address)).unwrap();
             break;
         }
         status_tx.send("Waiting for game...".to_string()).unwrap();
@@ -323,7 +323,7 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
             };
             if trophy.valid() {
                 if !data::trophy_exists(&trophy) {
-                    data::save_trophy(&trophy, &grind_tx);
+                    data::save_trophy(&trophy, &grind_tx, &challenge_tx);
                     trophy_tx.send(trophy).unwrap_or_default();
                     status_tx.send(format!("Stored {} trophy from {}", trophy_species, trophy_reserve)).unwrap_or_default();
                 } else {
