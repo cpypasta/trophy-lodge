@@ -200,9 +200,6 @@ fn update_challenges(trophy: &Trophy) -> Vec<String> {
     let mut update_happened = Vec::new();
     for c in challenges {
         let challenge_name = convert_challenge_name(&c.name);
-        if challenge_name != "layton_tour.csv" {
-            continue;
-        }
         let filename = Path::new(&CHALLENGES.to_string()).join(&challenge_name);
         let mut challenge_kills = read_csv::<Challenge>(filename.to_str().unwrap());
         let mut updated = false;
@@ -215,7 +212,6 @@ fn update_challenges(trophy: &Trophy) -> Vec<String> {
             }
         } 
         if updated {
-            println!("Updating challenge");
             create_csv(filename.to_str().unwrap(), challenge_kills);
             update_happened.push(c.name.clone()); 
         }       

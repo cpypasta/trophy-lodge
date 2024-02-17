@@ -225,32 +225,39 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
     let game_proc: Process;
     let game_directory: Option<String>;
     let base_address: usize;
-    let harvest_base_address: usize;
-
     loop {
         if let Some(game) = get_game() {
             game_proc = game.proc;
             game_directory = game.directory;
             base_address = game.base_address;
-            harvest_base_address = Pointer::new(base_address).add(&game_proc, 0x023D1EF0).address() + 0x280;
-            status_tx.send(format!("Attached to game: {:X} {:X}. Waiting for kill.", base_address, harvest_base_address)).unwrap();
             break;
         }
         status_tx.send("Waiting for game...".to_string()).unwrap();
         thread::sleep(Duration::from_secs(2));
     }
 
+    let mut harvest_base_address: usize;
+    loop {
+        harvest_base_address = Pointer::new(base_address).add(&game_proc, 0x023D1EF0).address() + 0x280;
+        if harvest_base_address > 1000 {
+            status_tx.send(format!("Attached to game: {:X} {:X}. Waiting for kill.", base_address, harvest_base_address)).unwrap();
+            break;
+        }
+
+        status_tx.send("Waiting for game to be fully loaded...".to_string()).unwrap();
+        thread::sleep(Duration::from_secs(2));
+    }
+
     let offsets = Offsets::new();
     let mut game_open = false;
     loop {
-        // TODO: if i get to this point and session_score is -1 for a certain period of time, you are stuck
-        // i suspect that the harvest base is invalid earlier
         let session_score = read_int(&game_proc, harvest_base_address, offsets.session_score);
         println!("Session score: {}", session_score);
         if session_score == -1 && game_open {
             status_tx.send("Game has been closed. No longer tracking.".to_string()).unwrap();
             break;
-        } else if session_score != -1 {
+        } 
+        if session_score != -1 {
             game_open = true;
         }
         let username_address = Pointer::new(base_address).add(&game_proc, 0x023A5580).address() + 0x390;
@@ -258,7 +265,6 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
         user_tx.send(username).unwrap_or_default();
         
         let weight = read_float(&game_proc, harvest_base_address, offsets.weight);
-        println!("Weight: {}", weight);
         if game_open && weight != last_weight && weight > 0.0e-15 { 
             last_weight = weight;
             let shot_info_base_address = get_shot_base_address(base_address, &game_proc);

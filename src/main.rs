@@ -311,8 +311,8 @@ impl MyApp {
 
         let ctx = &cc.egui_ctx;
         let trophies: Vec<Trophy> = data::read_trophies();
-        let filtered_trophies = trophies.clone();
         let trophy_filter = TrophyFilter::default();
+        let filtered_trophies = filter_data(&trophy_filter, trophies.clone());
         let grinds = data::get_grinds();
         set_style(ctx);
 
@@ -472,14 +472,12 @@ impl eframe::App for MyApp {
                                             diamond_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::Diamond).count();
                                             great_one_cnt = self.trophies.iter().filter(|x| x.reserve == self.trophy_reserve && x.rating == Rating::GreatOne).count();
                                         }  
-                                        // ui.label(RichText::new("]").monospace());   
                                         ui.monospace(great_one_cnt.to_string());                                
                                         ui.label(RichText::new("Great Ones:").strong().monospace());
                                         ui.monospace(diamond_cnt.to_string() + ", ");
                                         ui.label(RichText::new("Diamonds:").strong().monospace());
                                         ui.monospace(trophy_cnt.to_string() + ", ");
                                         ui.label(RichText::new("Trophies:").strong().monospace());
-                                        // ui.label(RichText::new("[").monospace());                              
                                     });
                                 });
                             });
@@ -525,18 +523,21 @@ impl eframe::App for MyApp {
                                             ui.add_space(20.0);
                                             let species = reserve_species().get(&self.trophy_reserve).unwrap().clone();
                                             ScrollArea::vertical().show(ui, |ui| {
-                                                Grid::new("lodge_reserve_species")
-                                                .num_columns(5)
-                                                .striped(false)
-                                                .spacing([20.0, 20.0])
-                                                .max_col_width(160.0)
-                                                .show(ui, |ui| {                                    
-                                                    for (i, s) in species.iter().enumerate() {
-                                                        show_species_summary(ui, &self.trophy_reserve, s, &self.trophies);
-                                                        if (i+1) % 5 == 0 {
-                                                            ui.end_row();
+                                                ui.horizontal(|ui| {
+                                                    ui.add_space(10.0);
+                                                    Grid::new("lodge_reserve_species")
+                                                    .num_columns(5)
+                                                    .striped(false)
+                                                    .spacing([20.0, 20.0])
+                                                    .max_col_width(160.0)
+                                                    .show(ui, |ui| {                                    
+                                                        for (i, s) in species.iter().enumerate() {
+                                                            show_species_summary(ui, &self.trophy_reserve, s, &self.trophies);
+                                                            if (i+1) % 5 == 0 {
+                                                                ui.end_row();
+                                                            }
                                                         }
-                                                    }
+                                                    });
                                                 });
                                             });
                                         }

@@ -341,7 +341,7 @@ pub fn reserve_species() -> HashMap<Reserve, Vec<Species>> {
         Species::Puma,
         Species::MountainGoat,
         Species::BighornSheep,
-        Species::EasternWildTurkey,
+        Species::MerriamTurkey,
         Species::BlackBear,
         Species::MuleDeer,
         Species::RockymountainElk,
@@ -570,7 +570,7 @@ pub struct Trophy {
 }
 impl Trophy {
     pub fn valid(&self) -> bool {
-        self.species != Species::Unknown && self.reserve != Reserve::Unknown
+        self.species != Species::Unknown && self.reserve != Reserve::Unknown && self.weight != 0.0
     }
 }
 
@@ -782,8 +782,6 @@ impl Challenge {
         if self.mods == Boolean::False {
             matches.push(trophy.mods == Boolean::False);
         }
-
-        println!("{:?}", matches);
 
         matches.iter().all(|&x| x)
     }
