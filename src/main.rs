@@ -260,6 +260,7 @@ enum Sidebar {
     Trophies,
     Grinds,
     Challenges,
+    Upgrade,
 }
 
 #[derive(PartialEq)]
@@ -297,6 +298,7 @@ struct MyApp {
     challenge: Challenge,
     challenges: Vec<ChallengeSummary>,
     challenge_rx: Receiver<ChallengeKill>,
+    upgrade_msg: String,
 }
 impl MyApp {
     fn new(
@@ -354,6 +356,7 @@ impl MyApp {
             challenge: Challenge::default(),
             challenges: data::get_challenges(),
             challenge_rx,
+            upgrade_msg: "".to_string(),
         }
     }
 }
@@ -434,6 +437,8 @@ impl eframe::App for MyApp {
                 ui.selectable_value(&mut self.menu, Sidebar::Grinds, "Grinds");
                 ui.add_space(5.0);
                 ui.selectable_value(&mut self.menu, Sidebar::Challenges, "Challenges");
+                ui.add_space(5.0);
+                ui.selectable_value(&mut self.menu, Sidebar::Upgrade, "Upgrade");
             });
         });
 
@@ -1115,6 +1120,17 @@ impl eframe::App for MyApp {
                         });
                     });
                 },
+                Sidebar::Upgrade => {
+                    ui.add_space(10.0);
+                    ui.label("If you have saved trophies from older versions of this tool, this will update the data to the latest version. Without this, you may not see all your data from previous versions.");
+                    ui.add_space(10.0);
+                    if ui.button("Upgrade Data").clicked() {
+                        data::upgrade_data();
+                        self.upgrade_msg = "Data has been upgraded. Restart the application to see the changes.".to_string();
+                    }
+                    ui.add_space(10.0);
+                    ui.strong(&self.upgrade_msg);
+                }
             }
         });
 

@@ -218,3 +218,10 @@ fn update_challenges(trophy: &Trophy) -> Vec<String> {
     }
     update_happened
 }
+
+pub fn upgrade_data() {
+    let mut trophies = fs::read_to_string(TROPHIES).unwrap();
+    trophies = trophies.replace("true", "True");
+    trophies = trophies.replace("false", "False");
+    fs::write(TROPHIES, trophies).unwrap();
+}
