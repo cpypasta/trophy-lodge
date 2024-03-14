@@ -175,7 +175,7 @@ fn using_mods(game_dir: &Option<String>) -> bool {
 }
 
 fn get_shot_base_address(base_address: usize, proc: &Process) -> usize {  
-    Pointer::new(base_address).add(proc, 0x023C9B78).add(proc, 0x30).add(proc, 0xD8).add(proc, 0x260).address()
+    Pointer::new(base_address).add(proc, 0x023C46A8).add(proc, 0xD8).add(proc, 0x2E0).address()
 }
 
 fn find_fur(proc: &Process, fur_lookup: usize, fur_lookup_offset: usize, mut max_fur_count: usize, fur_name_key: i32) -> Option<String> {
@@ -238,7 +238,7 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
 
     let mut harvest_base_address: usize;
     loop {
-        harvest_base_address = Pointer::new(base_address).add(&game_proc, 0x023D1EF0).address() + 0x280;
+        harvest_base_address = Pointer::new(base_address).add(&game_proc, 0x023F0FB8).address() + 0x288;
         if harvest_base_address > 1000 {
             status_tx.send(format!("Attached to game: {:X} {:X}. Waiting for kill.", base_address, harvest_base_address)).unwrap();
             break;
@@ -260,7 +260,7 @@ pub fn monitor(status_tx: Sender<String>, trophy_tx: Sender<Trophy>, user_tx: Se
         if session_score != -1 {
             game_open = true;
         }
-        let username_address = Pointer::new(base_address).add(&game_proc, 0x023A5580).address() + 0x390;
+        let username_address = Pointer::new(base_address).add(&game_proc, 0x023C46A0).address() + 0x390;
         let username = read_string(&game_proc, username_address, 0x0, false);
         user_tx.send(username).unwrap_or_default();
         
